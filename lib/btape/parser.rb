@@ -14,7 +14,7 @@ module Btape
     # argument is optional.
     ARITY = {
       'Output' => 1, 'Viewport' => 1, 'Goto' => 1, 'Click' => 1, 'Type' => 2, 'Sleep' => 1,
-      'Set' => 2, 'Screenshot' => 0..1
+      'Set' => 2, 'Screenshot' => 0..1, 'Evaluate' => 1, 'WaitFor' => 1..2, 'WaitForJS' => 1..2
     }.freeze
 
     FRAME_NAME = /\A[\w.-]+\z/
@@ -52,7 +52,15 @@ module Btape
       when 'Sleep' then validate_sleep(arguments.first, number)
       when 'Set' then Settings.validate!(*arguments)
       when 'Screenshot' then validate_frame_name(arguments.first, number)
+      when 'WaitFor', 'WaitForJS' then validate_wait_timeout(name, arguments, number)
       end
+    end
+
+    def validate_wait_timeout(name, arguments, number)
+      timeout = arguments[1]
+      return if timeout.nil? || Duration.valid?(timeout)
+
+      raise ScriptError.new(number, "#{name} timeout #{Duration::DESCRIPTION}")
     end
 
     # The name becomes part of a filename, so keep it to something that
