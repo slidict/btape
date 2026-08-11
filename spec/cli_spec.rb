@@ -1,8 +1,8 @@
-require_relative "test_helper"
+require_relative "spec_helper"
 require "stringio"
 require "tmpdir"
 
-class CliTest < Minitest::Test
+RSpec.describe Btape::CLI do
   FakeRunner = Struct.new(:received) do
     def run(commands, base_directory:)
       self.received = [commands, base_directory]
@@ -10,19 +10,18 @@ class CliTest < Minitest::Test
     end
   end
 
-  def test_parses_and_runs_a_tape
+  it "parses and runs a tape" do
     Dir.mktmpdir do |directory|
       path = File.join(directory, "demo.tape")
       File.write(path, "Output demo.gif\n")
       runner = FakeRunner.new
       output = StringIO.new
 
-      status = Btape::CLI.new(out: output, err: StringIO.new, runner: runner).run([path])
+      status = described_class.new(out: output, err: StringIO.new, runner: runner).run([path])
 
-      assert_equal 0, status
-      assert_equal directory, runner.received.last
-      assert_includes output.string, "Created"
+      expect(status).to eq(0)
+      expect(runner.received.last).to eq(directory)
+      expect(output.string).to include("Created")
     end
   end
 end
-

@@ -36,7 +36,7 @@ Chromium must be installed and discoverable by Ferrum. Then:
 ```sh
 bundle install
 bundle exec btape demo.tape
-bundle exec rake test
+bundle exec rake spec
 ```
 
 The recording interval is 100 ms (10 fps). Temporary PNG frames are removed

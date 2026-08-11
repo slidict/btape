@@ -10,7 +10,7 @@ commands:
     command: bundle
   test:
     service: app
-    command: bundle exec rake test
+    command: bundle exec rake spec
   demo:
     service: app
     command: bundle exec btape examples/demo.tape
