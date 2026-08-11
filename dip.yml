@@ -1,0 +1,24 @@
+version: "7.1"
+
+compose:
+  files:
+    - compose.yml
+
+interaction:
+  bash:
+    description: Open a shell in the development container
+    service: app
+    command: bash
+  bundle:
+    description: Run Bundler
+    service: app
+    command: bundle
+  test:
+    description: Run the test suite
+    service: app
+    command: bundle exec rake test
+  demo:
+    description: Record the example tape
+    service: app
+    command: bundle exec btape examples/demo.tape
+

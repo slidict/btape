@@ -1,0 +1,17 @@
+compose_files:
+  - compose.yml
+
+commands:
+  bash:
+    service: app
+    command: bash
+  bundle:
+    service: app
+    command: bundle
+  test:
+    service: app
+    command: bundle exec rake test
+  demo:
+    service: app
+    command: bundle exec btape examples/demo.tape
+

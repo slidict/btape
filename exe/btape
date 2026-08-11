@@ -1,0 +1,6 @@
+#!/usr/bin/env ruby
+
+require "btape"
+
+exit Btape::CLI.new.run(ARGV)
+
