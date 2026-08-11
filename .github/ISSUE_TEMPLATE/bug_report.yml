@@ -1,0 +1,65 @@
+name: Bug report
+description: Something isn't working as expected
+labels: [fix]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tape
+    attributes:
+      label: .tape file / minimal repro
+      description: Paste the tape script (or a minimal one) that reproduces the issue.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: btape-version
+    attributes:
+      label: btape version
+      placeholder: e.g. 0.1.0 (or commit SHA)
+    validations:
+      required: true
+
+  - type: input
+    id: ruby-version
+    attributes:
+      label: Ruby version
+      placeholder: ruby -v
+    validations:
+      required: true
+
+  - type: input
+    id: chromium-version
+    attributes:
+      label: Chromium/Chrome version
+      placeholder: chromium --version
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Docker/container
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output / stack trace
+      render: text
+    validations:
+      required: false

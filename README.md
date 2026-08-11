@@ -68,3 +68,13 @@ The GIF encoder uses a fixed 256-colour RGB332 palette to stay dependency-light.
 This favors portability over photographic colour fidelity and file size. The
 first matching element is used for `Click` and `Type`.
 
+## Contributing
+
+Bug reports and pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for the development setup, PR conventions, and how releases are generated.
+This project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## License
+
+[MIT](LICENSE)
+

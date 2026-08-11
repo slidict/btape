@@ -1,0 +1,28 @@
+name: Feature request
+description: Suggest an idea or new tape command
+labels: [feat]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What are you trying to do that btape doesn't support today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >
+        If you're proposing a new tape command, include the syntax you have
+        in mind, e.g. `Wait <selector>`.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
