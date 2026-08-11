@@ -28,4 +28,20 @@ RSpec.describe Btape::Parser do
     expect { described_class.new.parse("Sleep tomorrow\n") }
       .to raise_error(Btape::ScriptError, /line 1: Sleep duration/)
   end
+
+  it 'parses Set lines' do
+    commands = described_class.new.parse("Set CaptureMode manual\n")
+
+    expect(commands.first.arguments).to eq(%w[CaptureMode manual])
+  end
+
+  it 'rejects an unknown setting with its line number' do
+    expect { described_class.new.parse("Output demo.gif\nSet Sparkles yes\n") }
+      .to raise_error(Btape::ScriptError, 'line 2: unknown setting "Sparkles"')
+  end
+
+  it 'reports the wrong number of arguments' do
+    expect { described_class.new.parse("Set CaptureMode\n") }
+      .to raise_error(Btape::ScriptError, 'line 1: Set expects 2 argument(s), got 1')
+  end
 end

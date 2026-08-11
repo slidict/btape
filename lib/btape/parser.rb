@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require 'shellwords'
+require_relative 'duration'
+require_relative 'settings'
 
 module Btape
   Command = Struct.new(:name, :arguments, :line_number, keyword_init: true)
@@ -8,7 +10,12 @@ module Btape
   # Parses .tape scripts into a list of Command structs, raising ScriptError
   # for unknown commands, wrong argument counts, or invalid argument values.
   class Parser
-    ARITY = { 'Output' => 1, 'Viewport' => 1, 'Goto' => 1, 'Click' => 1, 'Type' => 2, 'Sleep' => 1 }.freeze
+    # An arity is either an exact count or a range, for commands whose last
+    # argument is optional.
+    ARITY = {
+      'Output' => 1, 'Viewport' => 1, 'Goto' => 1, 'Click' => 1, 'Type' => 2, 'Sleep' => 1,
+      'Set' => 2
+    }.freeze
 
     def parse(source)
       source.each_line.with_index(1).filter_map do |line, number|
@@ -29,7 +36,7 @@ module Btape
       raise ScriptError.new(number, "unknown command #{name.inspect}") unless ARITY.key?(name)
 
       arity = ARITY.fetch(name)
-      unless words.length == arity
+      unless arity === words.length # rubocop:disable Style/CaseEquality
         raise ScriptError.new(number, "#{name} expects #{arity} argument(s), got #{words.length}")
       end
 
@@ -41,6 +48,7 @@ module Btape
       case name
       when 'Viewport' then validate_viewport(arguments.first, number)
       when 'Sleep' then validate_sleep(arguments.first, number)
+      when 'Set' then Settings.validate!(*arguments)
       end
     end
 
@@ -51,9 +59,9 @@ module Btape
     end
 
     def validate_sleep(value, number)
-      return if /\A(\d+(?:\.\d+)?)(ms|s)\z/.match?(value)
+      return if Duration.valid?(value)
 
-      raise ScriptError.new(number, 'Sleep duration must use ms or s (for example, 500ms or 1.5s)')
+      raise ScriptError.new(number, "Sleep duration #{Duration::DESCRIPTION}")
     end
   end
 end
