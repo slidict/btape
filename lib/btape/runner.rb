@@ -13,7 +13,7 @@ module Btape
 
     # Everything one run threads through recording, kept in one object rather
     # than a parameter list that grows with each new command.
-    Context = Struct.new(:commands, :directory, :settings, :geometry, :output_path, :on_frame, :keep_frames,
+    Context = Struct.new(:commands, :directory, :settings, :geometry, :sink, :output_path, :on_frame, :keep_frames,
                          keyword_init: true)
 
     def initialize(browser_factory: lambda { |options|
@@ -25,14 +25,18 @@ module Btape
     end
 
     # Returns a Result. Pass `frames_directory:` to keep the PNG frames after
-    # the run, and `on_frame:` to be handed each one as it is captured.
-    def run(commands, base_directory: Dir.pwd, settings: {}, frames_directory: nil, on_frame: nil)
+    # the run, `on_frame:` to be handed each one as it is captured, and
+    # `output:` to override the tape's Output with another path or with an IO
+    # to write the GIF into.
+    def run(commands, base_directory: Dir.pwd, settings: {}, frames_directory: nil, on_frame: nil, output: nil)
       settings = Settings.from_commands(commands).merge(settings)
+      sink, output_path = resolve_output(commands, base_directory, output)
       context = Context.new(
         commands: commands,
         settings: settings,
         geometry: resolve_viewport(commands),
-        output_path: resolve_output_path(commands, base_directory),
+        sink: sink,
+        output_path: output_path,
         on_frame: on_frame,
         keep_frames: !frames_directory.nil?
       )
@@ -55,13 +59,17 @@ module Btape
       block.call(directory)
     end
 
-    def resolve_output_path(commands, base_directory)
-      output = commands.find { |command| command.name == 'Output' }&.arguments&.first
-      raise Error, 'script must contain an Output command' unless output
+    # Returns where the GIF goes and, when that is a file, its path. Writing
+    # into an IO leaves no path behind, so Result reports nil rather than a
+    # path nothing was written to.
+    def resolve_output(commands, base_directory, override)
+      declared = commands.find { |command| command.name == 'Output' }&.arguments&.first
+      raise Error, 'script must contain an Output command' unless declared
+      return [override, nil] if override.respond_to?(:write)
 
-      path = File.expand_path(output, base_directory)
+      path = File.expand_path(override || declared, base_directory)
       FileUtils.mkdir_p(File.dirname(path))
-      path
+      [path, path]
     end
 
     def resolve_viewport(commands)
@@ -78,7 +86,7 @@ module Btape
         recorder.start
         Executor.new(browser: browser, recorder: recorder, settings: context.settings).call(context.commands)
         recorder.stop
-        @gif_encoder.write(recorder.paths, context.output_path)
+        @gif_encoder.write(recorder.paths, context.sink)
         result(context, recorder)
       ensure
         begin

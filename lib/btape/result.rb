@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
 module Btape
-  # What a run produced. Callers that only want the GIF read `output_path`;
-  # callers that want the frames themselves (to attach a still somewhere, say)
+  # What a run produced. `output_path` is where the GIF was written, or nil
+  # when the caller passed an IO for it to be written into instead.
+  #
+  # Callers that want the frames themselves (to attach a still somewhere, say)
   # pass `frames_directory:` to Runner#run and read `frame_paths`.
   #
   # Without a `frames_directory:` the frames live in a temporary directory

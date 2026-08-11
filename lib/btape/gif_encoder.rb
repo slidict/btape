@@ -12,19 +12,34 @@ module Btape
       @compressor = LzwCompressor.new
     end
 
-    def write(png_paths, output)
-      raise Error, 'no screenshots were captured' if png_paths.empty?
+    # Returns the GIF as a binary String. Frames are PNG paths or ChunkyPNG
+    # images. Callers that are not writing to the filesystem — attaching the
+    # GIF to a record, say — want this rather than a file to read back.
+    def encode(frames)
+      raise Error, 'no screenshots were captured' if frames.empty?
 
-      images = png_paths.map { |path| ChunkyPNG::Image.from_file(path) }
+      images = frames.map { |frame| image(frame) }
       width, height = images.first.dimension.to_a
       raise Error, 'captured screenshots have different dimensions' unless images.all? do |image|
         image.dimension.to_a == [width, height]
       end
 
-      File.binwrite(output, gif(images, width, height))
+      gif(images, width, height)
+    end
+
+    # Writes to a path, or to anything that responds to write.
+    def write(frames, output)
+      data = encode(frames)
+      return output.write(data) if output.respond_to?(:write)
+
+      File.binwrite(output, data)
     end
 
     private
+
+    def image(frame)
+      frame.is_a?(ChunkyPNG::Image) ? frame : ChunkyPNG::Image.from_file(frame)
+    end
 
     def gif(images, width, height)
       data = +'GIF89a'.b

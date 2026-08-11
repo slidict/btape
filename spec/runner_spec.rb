@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'spec_helper'
+require 'stringio'
 require 'tmpdir'
 
 # Fakes standing in for Ferrum, exercising Runner's command dispatch and
@@ -347,6 +348,34 @@ RSpec.describe Btape::Runner do
 
       expect(result.named_frames).to eq('cover' => File.join(directory, 'frames', 'frame-cover.png'))
       expect(result.frame_count).to eq(1)
+    end
+  end
+
+  describe 'output:' do
+    let(:gif_encoder) { Btape::GifEncoder.new }
+
+    it 'writes the gif into an IO and reports no path' do
+      Dir.mktmpdir do |directory|
+        commands = [Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1)]
+        buffer = StringIO.new(+''.b)
+
+        result = runner.run(commands, base_directory: directory, output: buffer)
+
+        expect(buffer.string).to start_with('GIF89a')
+        expect(result.output_path).to be_nil
+        expect(File.exist?(File.join(directory, 'demo.gif'))).to be false
+      end
+    end
+
+    it 'writes to a path the caller gives instead of the tape' do
+      Dir.mktmpdir do |directory|
+        commands = [Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1)]
+
+        result = runner.run(commands, base_directory: directory, output: 'elsewhere/other.gif')
+
+        expect(result.output_path).to eq(File.join(directory, 'elsewhere/other.gif'))
+        expect(File.exist?(result.output_path)).to be true
+      end
     end
   end
 

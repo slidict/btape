@@ -9,5 +9,9 @@ Metrics/AbcSize:
 Metrics/BlockLength:
   Exclude:
     - spec/**/*
+# Keyword arguments are named at the call site, so a long list of them does
+# not carry the confusion a long positional list does.
+Metrics/ParameterLists:
+  CountKeywordArgs: false
 Layout/LineLength:
   Max: 120

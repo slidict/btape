@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative 'spec_helper'
+require 'stringio'
 require 'tmpdir'
 
 # A minimal, standards-compliant GIF89a + variable-width LZW decoder, used
@@ -155,6 +156,41 @@ RSpec.describe Btape::GifEncoder do
       expect(data.scan("\x21\xF9\x04".b).length).to eq(2)
       expect(data).to end_with(';')
     end
+  end
+
+  it 'returns the gif as a binary string' do
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, 'frame.png')
+      ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red')).save(path)
+
+      data = described_class.new.encode([path])
+
+      expect(data).to start_with('GIF89a')
+      expect(data.encoding).to eq(Encoding::BINARY)
+    end
+  end
+
+  it 'encodes images it is handed directly, without a file to read back' do
+    data = described_class.new.encode([ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red'))])
+
+    expect(data).to start_with('GIF89a')
+  end
+
+  it 'writes into anything that responds to write' do
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, 'frame.png')
+      ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red')).save(path)
+      buffer = StringIO.new(+''.b)
+
+      described_class.new.write([path], buffer)
+
+      expect(buffer.string).to start_with('GIF89a')
+    end
+  end
+
+  it 'refuses to encode without any frames' do
+    expect { described_class.new.encode([]) }
+      .to raise_error(Btape::Error, 'no screenshots were captured')
   end
 
   it 'round-trips pixel data correctly across an LZW code-width boundary' do
