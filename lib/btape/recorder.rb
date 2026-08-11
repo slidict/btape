@@ -1,4 +1,8 @@
+# frozen_string_literal: true
+
 module Btape
+  # Captures periodic screenshots of a page on a background thread until
+  # stopped, building the frame sequence GifEncoder turns into a GIF.
   class Recorder
     def initialize(page, directory, interval: 0.1)
       @page = page
@@ -37,7 +41,7 @@ module Btape
 
     def capture
       @mutex.synchronize do
-        path = File.join(@directory, format("frame-%06d.png", @paths.length))
+        path = File.join(@directory, format('frame-%06d.png', @paths.length))
         screenshot(path)
         @paths << path
       end

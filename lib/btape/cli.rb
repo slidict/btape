@@ -1,4 +1,8 @@
+# frozen_string_literal: true
+
 module Btape
+  # Entry point invoked by the `btape` executable: parses argv, runs the
+  # script, and reports success or failure.
   class CLI
     def initialize(out: $stdout, err: $stderr, runner: Runner.new)
       @out = out
@@ -7,7 +11,7 @@ module Btape
     end
 
     def run(argv)
-      raise Error, "usage: btape SCRIPT.tape" unless argv.length == 1
+      raise Error, 'usage: btape SCRIPT.tape' unless argv.length == 1
 
       script = File.expand_path(argv.first)
       commands = Parser.new.parse(File.read(script))

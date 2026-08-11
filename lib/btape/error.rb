@@ -1,6 +1,10 @@
+# frozen_string_literal: true
+
 module Btape
   class Error < StandardError; end
 
+  # Raised for a problem in the .tape script itself, carrying the line
+  # number so the CLI can report where the script went wrong.
   class ScriptError < Error
     attr_reader :line_number
 
@@ -10,4 +14,3 @@ module Btape
     end
   end
 end
-

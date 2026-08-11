@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
+# frozen_string_literal: true
 
-require "btape"
+require 'btape'
 
 exit Btape::CLI.new.run(ARGV)
-

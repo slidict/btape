@@ -1,1 +1,3 @@
-require "btape"
+# frozen_string_literal: true
+
+require 'btape'
