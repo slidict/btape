@@ -2,6 +2,7 @@
 
 require_relative 'btape/version'
 require_relative 'btape/error'
+require_relative 'btape/null_logger'
 require_relative 'btape/duration'
 require_relative 'btape/settings'
 require_relative 'btape/parser'

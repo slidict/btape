@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
+require 'logger'
 require 'optparse'
 
 module Btape
   # Entry point invoked by the `btape` executable: parses argv, runs the
   # script, and reports success or failure.
   class CLI
-    Options = Struct.new(:help, :settings, :frames_directory)
+    Options = Struct.new(:help, :settings, :frames_directory, :verbose)
 
     USAGE = 'Usage: btape [options] SCRIPT.tape'
     HELP_ARGUMENTS = %w[help -h --help].freeze
@@ -16,14 +17,16 @@ module Btape
                      'WaitForJS JAVASCRIPT [TIMEOUT]', 'Frame SELECTOR|main',
                      'Press KEY [COUNT]'].freeze
 
-    def initialize(out: $stdout, err: $stderr, runner: Runner.new)
+    # The runner is built after the flags are read, so that --verbose can
+    # reach it. Pass one to use it as given.
+    def initialize(out: $stdout, err: $stderr, runner: nil)
       @out = out
       @err = err
       @runner = runner
     end
 
     def run(argv)
-      options = Options.new(false, {})
+      options = Options.new(false, {}, nil, false)
       arguments = parse_options(argv, options)
       return print_help if options.help || arguments.empty? || HELP_ARGUMENTS.include?(arguments.first)
       raise Error, USAGE unless arguments.length == 1
@@ -40,7 +43,7 @@ module Btape
     def record(argument, options)
       script = File.expand_path(argument)
       commands = Parser.new.parse(File.read(script))
-      result = @runner.run(
+      result = runner(options).run(
         commands,
         base_directory: File.dirname(script),
         settings: settings(options),
@@ -48,6 +51,16 @@ module Btape
       )
       @out.puts "Created #{result.output_path}"
       report_frames(result)
+    end
+
+    def runner(options)
+      @runner || Runner.new(logger: logger(options))
+    end
+
+    def logger(options)
+      return NullLogger.new unless options.verbose
+
+      Logger.new(@err, level: Logger::DEBUG, formatter: ->(_severity, _time, _program, message) { "#{message}\n" })
     end
 
     def report_frames(result)
@@ -83,6 +96,7 @@ module Btape
         parser.on('--frames-dir DIR', 'Write the PNG frames here and keep them') do |directory|
           options.frames_directory = directory
         end
+        parser.on('--verbose', 'Report each command on stderr as it runs') { options.verbose = true }
         parser.on('-h', '--help', 'Show this message') { options.help = true }
       end
     end
@@ -94,6 +108,7 @@ module Btape
       @out.puts '  --ws-url URL     Connect to a browser already running at this CDP url'
       @out.puts '  --set NAME=VALUE Override a setting, as a Set line would'
       @out.puts '  --frames-dir DIR Write the PNG frames here and keep them'
+      @out.puts '  --verbose        Report each command on stderr as it runs'
       @out.puts
       @out.puts 'Commands:'
       HELP_COMMANDS.each { |command| @out.puts "  #{command}" }

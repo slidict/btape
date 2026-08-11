@@ -2,6 +2,8 @@
 
 require 'fileutils'
 require 'ferrum'
+require 'monitor'
+require 'timeout'
 require 'tmpdir'
 
 module Btape
@@ -20,10 +22,11 @@ module Btape
     # settings the tape and the caller supplied.
     def initialize(browser_factory: lambda { |options|
       Ferrum::Browser.new(**options)
-    }, recorder_class: Recorder, gif_encoder: nil)
+    }, recorder_class: Recorder, gif_encoder: nil, logger: NullLogger.new)
       @browser_factory = browser_factory
       @recorder_class = recorder_class
       @gif_encoder = gif_encoder
+      @logger = logger
     end
 
     # Returns a Result. Pass `frames_directory:` to keep the PNG frames after
@@ -82,21 +85,48 @@ module Btape
     def record(context)
       browser = nil
       recorder = nil
+      lock = Monitor.new
       begin
-        browser = open_browser(context.settings, context.geometry)
-        recorder = build_recorder(browser, context)
-        recorder.start
-        Executor.new(browser: browser, recorder: recorder, settings: context.settings).call(context.commands)
-        recorder.stop
-        encoder(context.settings).write(recorder.paths, context.sink)
-        result(context, recorder)
-      ensure
-        begin
-          recorder&.stop
-        rescue StandardError
-          nil
+        timed(context.settings.timeout) do
+          browser = open_browser(context.settings, context.geometry)
+          recorder = build_recorder(browser, context, lock)
+          recorder.start
+          execute(context, browser, recorder, lock)
+          recorder.stop
+          encoder(context.settings).write(recorder.paths, context.sink)
+          result(context, recorder)
         end
+      ensure
+        unwind(recorder, browser)
+      end
+    end
+
+    # A page that never finishes loading would otherwise record until the
+    # frame limit or the disk stopped it.
+    def timed(seconds, &)
+      Timeout.timeout(seconds, TimeoutError, "run timed out after #{seconds}s", &)
+    end
+
+    def execute(context, browser, recorder, lock)
+      Executor.new(
+        browser: browser, recorder: recorder, settings: context.settings, lock: lock, logger: @logger
+      ).call(context.commands)
+    end
+
+    # stop and quit are reached again here after they have already run, which
+    # is a no-op; the case that matters is the run failing before them. A
+    # failure to unwind must not replace the exception on its way out, since
+    # that is the one that says why the run failed — so it is logged, not
+    # swallowed and not raised.
+    def unwind(recorder, browser)
+      recorder&.stop
+    rescue StandardError => e
+      @logger.warn("btape: could not stop the recorder: #{e.message}")
+    ensure
+      begin
         browser&.quit
+      rescue StandardError => e
+        @logger.warn("btape: could not quit the browser: #{e.message}")
       end
     end
 
@@ -104,13 +134,15 @@ module Btape
       @gif_encoder || GifEncoder.for(settings)
     end
 
-    def build_recorder(browser, context)
+    def build_recorder(browser, context, lock)
       @recorder_class.new(
         browser,
         context.directory,
         interval: 1.0 / context.settings.framerate,
         mode: context.settings.capture_mode,
-        on_frame: context.on_frame
+        on_frame: context.on_frame,
+        max_frames: context.settings.max_frames,
+        lock: lock
       )
     end
 

@@ -13,5 +13,10 @@ Metrics/BlockLength:
 # not carry the confusion a long positional list does.
 Metrics/ParameterLists:
   CountKeywordArgs: false
+# Runner and Executor are each one cohesive job — the session around a script
+# and the script itself. Splitting either further to satisfy a line count
+# would scatter that job rather than clarify it.
+Metrics/ClassLength:
+  Max: 125
 Layout/LineLength:
   Max: 120

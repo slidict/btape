@@ -74,14 +74,16 @@ RSpec.describe Btape::Runner do
   # Recorder's interval/manual split and on_frame callback.
   let(:fake_recorder_class) do
     Class.new do
-      attr_reader :paths, :named_paths, :interval, :mode
+      attr_reader :paths, :named_paths, :interval, :mode, :max_frames, :lock
 
-      def initialize(page, directory, interval: 0.1, mode: :interval, on_frame: nil)
+      def initialize(page, directory, interval: 0.1, mode: :interval, on_frame: nil, max_frames: nil, lock: nil)
         @page = page
         @directory = directory
         @interval = interval
         @mode = mode
         @on_frame = on_frame
+        @max_frames = max_frames
+        @lock = lock
         @paths = []
         @named_paths = {}
       end
@@ -376,6 +378,107 @@ RSpec.describe Btape::Runner do
         expect(result.output_path).to eq(File.join(directory, 'elsewhere/other.gif'))
         expect(File.exist?(result.output_path)).to be true
       end
+    end
+  end
+
+  describe 'unwinding' do
+    let(:logger) { instance_double(Btape::NullLogger, debug: nil, info: nil, warn: nil) }
+
+    def failing_recorder_class(error)
+      Class.new(fake_recorder_class) do
+        define_method(:stop) { raise error }
+      end
+    end
+
+    # The exception on its way out is the one that says why the run failed;
+    # a failure to stop the recorder must not replace it.
+    it 'keeps the original failure when the recorder cannot be stopped' do
+      Dir.mktmpdir do |directory|
+        commands = [
+          Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+          Btape::Command.new(name: 'Click', arguments: ['#missing'], line_number: 2)
+        ]
+        runner = described_class.new(
+          browser_factory: ->(options) { browser.connect(options) },
+          recorder_class: failing_recorder_class(RuntimeError.new('recorder is wedged')),
+          gif_encoder: gif_encoder,
+          logger: logger
+        )
+
+        expect { runner.run(commands, base_directory: directory) }
+          .to raise_error(Btape::ScriptError, /element not found: #missing/)
+      end
+    end
+
+    it 'reports the failure to stop rather than discarding it' do
+      Dir.mktmpdir do |directory|
+        commands = [
+          Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+          Btape::Command.new(name: 'Click', arguments: ['#missing'], line_number: 2)
+        ]
+        runner = described_class.new(
+          browser_factory: ->(options) { browser.connect(options) },
+          recorder_class: failing_recorder_class(RuntimeError.new('recorder is wedged')),
+          gif_encoder: gif_encoder,
+          logger: logger
+        )
+
+        expect { runner.run(commands, base_directory: directory) }.to raise_error(Btape::ScriptError)
+        expect(logger).to have_received(:warn).with(/could not stop the recorder: recorder is wedged/)
+      end
+    end
+
+    it 'still quits the browser when the recorder cannot be stopped' do
+      Dir.mktmpdir do |directory|
+        commands = [Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1)]
+        runner = described_class.new(
+          browser_factory: ->(options) { browser.connect(options) },
+          recorder_class: failing_recorder_class(RuntimeError.new('recorder is wedged')),
+          gif_encoder: gif_encoder,
+          logger: logger
+        )
+
+        expect { runner.run(commands, base_directory: directory) }.to raise_error('recorder is wedged')
+        expect(browser.quit_called?).to be true
+      end
+    end
+  end
+
+  it 'gives up on a run that outlasts Set Timeout' do
+    Dir.mktmpdir do |directory|
+      commands = [
+        Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+        Btape::Command.new(name: 'Set', arguments: %w[Timeout 10ms], line_number: 2),
+        Btape::Command.new(name: 'Sleep', arguments: ['5s'], line_number: 3)
+      ]
+
+      expect { runner.run(commands, base_directory: directory) }
+        .to raise_error(Btape::ScriptError, /run timed out after 0.01s/)
+      expect(browser.quit_called?).to be true
+    end
+  end
+
+  it 'passes the frame limit to the recorder' do
+    Dir.mktmpdir do |directory|
+      commands = [
+        Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+        Btape::Command.new(name: 'Set', arguments: %w[MaxFrames 5], line_number: 2)
+      ]
+      recorders = []
+      spy = Class.new(fake_recorder_class) do
+        define_method(:initialize) do |*args, **options|
+          super(*args, **options)
+          recorders << self
+        end
+      end
+
+      described_class.new(
+        browser_factory: ->(options) { browser.connect(options) },
+        recorder_class: spy,
+        gif_encoder: gif_encoder
+      ).run(commands, base_directory: directory)
+
+      expect(recorders.first.max_frames).to eq(5)
     end
   end
 

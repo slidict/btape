@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'monitor'
+
 module Btape
   # Captures the frames a GIF is built from.
   #
@@ -8,15 +10,19 @@ module Btape
   # Screenshot command, which is what a tape wants when it needs one frame per
   # page rather than a few hundred near-identical ones.
   class Recorder
-    def initialize(page, directory, interval: 0.1, mode: :interval, on_frame: nil)
+    def initialize(page, directory, interval: 0.1, mode: :interval, on_frame: nil, max_frames: nil,
+                   lock: Monitor.new)
       @page = page
       @directory = directory
       @interval = interval
       @mode = mode.to_sym
       @on_frame = on_frame
+      @max_frames = max_frames
+      # Shared with the executor, so a screenshot and a command are never in
+      # flight against the same page at once.
+      @lock = lock
       @paths = []
       @named_paths = {}
-      @mutex = Mutex.new
     end
 
     attr_reader :paths, :named_paths
@@ -49,7 +55,9 @@ module Btape
     # Captures one frame now. A name puts it at a predictable path, so a
     # caller can pick a particular frame out of the run.
     def capture(name: nil)
-      path, index = @mutex.synchronize do
+      path, index = @lock.synchronize do
+        exhausted! if @max_frames && @paths.length >= @max_frames
+
         path = File.join(@directory, filename(name))
         screenshot(path)
         index = @paths.length
@@ -64,6 +72,12 @@ module Btape
     end
 
     private
+
+    # A page that hangs would otherwise be screenshotted until the disk ran
+    # out, which on a shared host takes more than this run down with it.
+    def exhausted!
+      raise Error, "stopped after #{@max_frames} frames; raise Set MaxFrames to record for longer"
+    end
 
     def manual?
       @mode == :manual

@@ -130,6 +130,46 @@ RSpec.describe Btape::Recorder do
     end
   end
 
+  # A page that hangs would otherwise be screenshotted until the disk ran out.
+  it 'stops once it has captured MaxFrames' do
+    recorder = described_class.new(page, directory, mode: :manual, max_frames: 2)
+
+    recorder.capture
+    recorder.capture
+
+    expect { recorder.capture }.to raise_error(Btape::Error, /stopped after 2 frames/)
+  end
+
+  it 'reports the frame limit reached on the background thread when stopped' do
+    recorder = described_class.new(page, directory, interval: 0.001, max_frames: 3)
+
+    recorder.start
+    wait_for_captures(page.captures, 3)
+
+    expect { recorder.stop }.to raise_error(Btape::Error, /stopped after 3 frames/)
+  end
+
+  it 'stops only once, so unwinding twice is harmless' do
+    recorder = described_class.new(page, directory, interval: 60)
+
+    recorder.start
+    recorder.stop
+    recorder.stop
+
+    expect(page.screenshots.length).to eq(2)
+  end
+
+  it 'takes the lock it shares with the executor while capturing' do
+    lock = Monitor.new
+    held = nil
+    page.define_singleton_method(:screenshot) { |**| held = lock.mon_owned? }
+    recorder = described_class.new(page, directory, mode: :manual, lock: lock)
+
+    recorder.capture
+
+    expect(held).to be true
+  end
+
   it 'gives a named frame a predictable path and records it by name' do
     recorder = described_class.new(page, directory, mode: :manual)
 

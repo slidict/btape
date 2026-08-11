@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
+require 'monitor'
 require_relative 'duration'
+require_relative 'null_logger'
 
 module Btape
   # Performs the parsed commands against a browser, turning any failure into a
@@ -22,17 +24,20 @@ module Btape
 
     MAIN_FRAME = 'main'
 
-    def initialize(browser:, recorder:, settings:)
+    def initialize(browser:, recorder:, settings:, lock: Monitor.new, logger: NullLogger.new)
       @browser = browser
       # Elements and JavaScript are looked up in the current frame, which
       # starts as the page itself and moves when a Frame command says so.
       @target = browser
       @recorder = recorder
       @settings = settings
+      @lock = lock
+      @logger = logger
     end
 
     def call(commands)
       commands.each do |command|
+        @logger.debug("btape: line #{command.line_number}: #{command.name}")
         perform(command)
       rescue StandardError => e
         raise ScriptError.new(command.line_number, "#{command.name} failed: #{e.message}")
@@ -41,13 +46,25 @@ module Btape
 
     private
 
+    # Held across each exchange with the browser, and shared with the
+    # recorder, so a screenshot taken on the recorder's thread is never in
+    # flight at the same time as a command on this one.
+    #
+    # It is deliberately not held for a whole command: Sleep and the waiting
+    # commands spend most of their time not talking to the browser at all,
+    # and holding the lock through that would leave interval recording with
+    # nothing to capture for the duration.
+    def locked(&)
+      @lock.synchronize(&)
+    end
+
     def perform(command)
       handler = HANDLERS[command.name]
       send(handler, *command.arguments) if handler
     end
 
     def goto(url)
-      @browser.go_to(url)
+      locked { @browser.go_to(url) }
       # Whatever frame we were in belongs to the page we just left.
       @target = @browser
     end
@@ -63,17 +80,19 @@ module Btape
     end
 
     def press(key, count = '1')
-      Integer(count, 10).times { @browser.keyboard.type(key.to_sym) }
+      Integer(count, 10).times { locked { @browser.keyboard.type(key.to_sym) } }
     end
 
     def click(selector)
-      find(selector).click
+      locked { find(selector).click }
     end
 
     def enter(selector, text)
-      element = find(selector)
-      element.focus
-      element.type(text)
+      locked do
+        element = find(selector)
+        element.focus
+        element.type(text)
+      end
     end
 
     def pause(duration)
@@ -85,7 +104,7 @@ module Btape
     end
 
     def evaluate(expression)
-      @target.evaluate(expression)
+      locked { @target.evaluate(expression) }
     end
 
     def wait_for_element(selector, timeout = nil)
@@ -140,10 +159,12 @@ module Btape
     end
 
     def element(selector)
-      return @target.at_css(selector) unless selector.start_with?('text=')
+      locked do
+        next @target.at_css(selector) unless selector.start_with?('text=')
 
-      literal = xpath_literal(selector.delete_prefix('text='))
-      @target.at_xpath("//*[normalize-space(text())=#{literal}]")
+        literal = xpath_literal(selector.delete_prefix('text='))
+        @target.at_xpath("//*[normalize-space(text())=#{literal}]")
+      end
     end
 
     def xpath_literal(text)
