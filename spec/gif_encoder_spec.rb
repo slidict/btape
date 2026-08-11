@@ -193,6 +193,86 @@ RSpec.describe Btape::GifEncoder do
       .to raise_error(Btape::Error, 'no screenshots were captured')
   end
 
+  # The delay lives in the two bytes after each graphic control block's
+  # introducer, block size and packed field.
+  def frame_delays(data)
+    offsets = []
+    position = 0
+    while (offset = data.index("\x21\xF9\x04".b, position))
+      offsets << offset
+      position = offset + 1
+    end
+    offsets.map { |offset| data[offset + 4, 2].unpack1('v') }
+  end
+
+  describe 'frame delays' do
+    it 'writes the delay it was given' do
+      data = described_class.new(delay: 25).encode([ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red'))])
+
+      expect(frame_delays(data)).to eq([25])
+    end
+
+    # A run that sits on one page is a dozen identical frames; holding the
+    # first for longer says the same thing in a fraction of the bytes.
+    it 'collapses identical consecutive frames into a longer delay' do
+      red = ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red'))
+      blue = ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('blue'))
+
+      data = described_class.new(delay: 10).encode([red, red, red, blue])
+
+      expect(frame_delays(data)).to eq([30, 10])
+    end
+
+    it 'keeps every frame when dedupe is off' do
+      red = ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red'))
+
+      data = described_class.new(delay: 10, dedupe: false).encode([red, red, red])
+
+      expect(frame_delays(data)).to eq([10, 10, 10])
+    end
+
+    it 'only collapses frames that are next to each other' do
+      red = ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red'))
+      blue = ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('blue'))
+
+      data = described_class.new(delay: 10).encode([red, blue, red])
+
+      expect(frame_delays(data)).to eq([10, 10, 10])
+    end
+  end
+
+  it 'writes the loop count into the netscape extension' do
+    data = described_class.new(loop_count: 3).encode([ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red'))])
+
+    expect(data).to include("NETSCAPE2.0\x03\x01\x03\x00".b)
+  end
+
+  describe 'resizing' do
+    it 'scales the frames down' do
+      data = described_class.new(scale: 0.5).encode([ChunkyPNG::Image.new(40, 20, ChunkyPNG::Color('red'))])
+
+      expect(data[6, 4].unpack('vv')).to eq([20, 10])
+    end
+
+    it 'takes an explicit width and keeps the aspect ratio' do
+      data = described_class.new(width: 10).encode([ChunkyPNG::Image.new(40, 20, ChunkyPNG::Color('red'))])
+
+      expect(data[6, 4].unpack('vv')).to eq([10, 5])
+    end
+
+    it 'leaves the frames alone at the default scale' do
+      data = described_class.new.encode([ChunkyPNG::Image.new(40, 20, ChunkyPNG::Color('red'))])
+
+      expect(data[6, 4].unpack('vv')).to eq([40, 20])
+    end
+  end
+
+  it 'builds itself from settings' do
+    encoder = described_class.for(Btape::Settings.new(frame_delay: 0.25, loop_count: 2))
+
+    expect(frame_delays(encoder.encode([ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red'))]))).to eq([25])
+  end
+
   it 'round-trips pixel data correctly across an LZW code-width boundary' do
     # A single solid colour, wide/tall enough that the dictionary must grow
     # past 511 entries, forcing the encoder's 9-to-10-bit code width switch.

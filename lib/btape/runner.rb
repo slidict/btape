@@ -16,9 +16,11 @@ module Btape
     Context = Struct.new(:commands, :directory, :settings, :geometry, :sink, :output_path, :on_frame, :keep_frames,
                          keyword_init: true)
 
+    # An encoder passed here is used as given; otherwise one is built from the
+    # settings the tape and the caller supplied.
     def initialize(browser_factory: lambda { |options|
       Ferrum::Browser.new(**options)
-    }, recorder_class: Recorder, gif_encoder: GifEncoder.new)
+    }, recorder_class: Recorder, gif_encoder: nil)
       @browser_factory = browser_factory
       @recorder_class = recorder_class
       @gif_encoder = gif_encoder
@@ -86,7 +88,7 @@ module Btape
         recorder.start
         Executor.new(browser: browser, recorder: recorder, settings: context.settings).call(context.commands)
         recorder.stop
-        @gif_encoder.write(recorder.paths, context.sink)
+        encoder(context.settings).write(recorder.paths, context.sink)
         result(context, recorder)
       ensure
         begin
@@ -96,6 +98,10 @@ module Btape
         end
         browser&.quit
       end
+    end
+
+    def encoder(settings)
+      @gif_encoder || GifEncoder.for(settings)
     end
 
     def build_recorder(browser, context)
