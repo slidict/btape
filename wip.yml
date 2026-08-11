@@ -16,6 +16,10 @@ compose:
   project: btape
 
 interaction:
+  demo:
+    type: run
+    command: bundle exec btape examples/demo.tape
+    container: app
   btape:
     type: run
     command: bundle exec btape

@@ -45,23 +45,22 @@ directory and cleaned when an error unwinds the run.
 
 ## Container development with dip or wip
 
-The development image contains Ruby and Chromium. Both wrappers expose the
-same `test`, `demo`, `bundle`, and `bash` commands:
+The development image contains Ruby and Chromium.
 
 ```sh
 dip provision
 dip test
 dip demo
 
-wip provision
-wip test
-wip demo
+wip up
+wip dispatch demo
+wip dispatch btape examples/demo.tape
 ```
 
-The example expects the demo application on port 3000 of the container host.
-On Linux, add an appropriate `host.docker.internal` host mapping if Docker does
-not provide one automatically. You can also edit `examples/demo.tape` to point
-at another local URL.
+`examples/demo.tape` drives a small static page bundled at
+`examples/demo_app.html`, so the demo is self-contained and needs no other
+service running. Edit the tape (or point `Goto` at a different URL) to record
+something else.
 
 ## MVP limitations
 
