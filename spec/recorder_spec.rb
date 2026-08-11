@@ -1,23 +1,32 @@
 # frozen_string_literal: true
 
 require_relative 'spec_helper'
+require 'timeout'
 
 RSpec.describe Btape::Recorder do
   let(:page_class) do
     Class.new do
-      attr_reader :screenshots
+      attr_reader :screenshots, :captures
 
       def initialize
         @screenshots = []
+        @captures = Queue.new
       end
 
       def screenshot(path:)
         @screenshots << path
+        @captures << path
       end
     end
   end
   let(:page) { page_class.new }
   let(:directory) { '/frames' }
+
+  # Blocks until `count` captures have been observed on the background
+  # thread, instead of guessing how long that takes with a fixed sleep.
+  def wait_for_captures(queue, count)
+    Timeout.timeout(1) { count.times { queue.pop } }
+  end
 
   it 'captures a frame immediately on start and again on stop' do
     recorder = described_class.new(page, directory, interval: 60)
@@ -43,28 +52,37 @@ RSpec.describe Btape::Recorder do
     recorder = described_class.new(page, directory, interval: 0.01)
 
     recorder.start
-    sleep 0.05
+    # The initial synchronous capture from #start is one of these; waiting
+    # for a few more proves the background thread is also capturing.
+    wait_for_captures(page.captures, 4)
     recorder.stop
 
-    expect(page.screenshots.length).to be >= 3
+    expect(page.screenshots.length).to be >= 4
   end
 
   it 're-raises an error that occurred on the background capture thread' do
     failing_page = Class.new do
+      attr_reader :captures
+
       def initialize
         @calls = 0
+        @captures = Queue.new
       end
 
       def screenshot(*)
         @calls += 1
         raise 'boom' if @calls == 2
+      ensure
+        @captures << @calls
       end
     end.new
 
     recorder = described_class.new(failing_page, directory, interval: 0.01)
 
     recorder.start
-    sleep 0.05
+    # Wait until the second capture (the one that raises) has actually run,
+    # rather than guessing at a sleep long enough for it to have happened.
+    wait_for_captures(failing_page.captures, 2)
 
     expect { recorder.stop }.to raise_error('boom')
   end
