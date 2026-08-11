@@ -1,17 +1,22 @@
-compose_files:
-  - compose.yml
+version: 1
 
-commands:
-  bash:
-    service: app
-    command: bash
-  bundle:
-    service: app
-    command: bundle
-  test:
-    service: app
-    command: bundle exec rake spec
-  demo:
-    service: app
-    command: bundle exec btape examples/demo.tape
+# wip parses compose.yml itself and drives wslc directly — no external
+# compose-for-wslc binary needed. Prefer a real compose tool instead? Use
+# mode: compose (see README "Compose mode") and set compose.command.
+mode: compose-native
 
+wslc:
+  # optional; wslc binary/path wip shells out to ("auto" resolves it for you)
+  command: auto
+
+compose:
+  # TODO: which service in compose.yml wip run/exec/NAME target
+  service: app
+  file: compose.yml
+  project: btape
+
+interaction:
+  btape:
+    type: run
+    command: bundle exec btape
+    container: app

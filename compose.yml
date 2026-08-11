@@ -7,7 +7,6 @@ services:
       - bundle:/bundle
     environment:
       CHROME_PATH: /usr/bin/chromium
-    init: true
 
 volumes:
   bundle:
