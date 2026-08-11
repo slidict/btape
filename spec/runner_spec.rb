@@ -69,15 +69,27 @@ RSpec.describe Btape::Runner do
   let(:browser) { FakeBrowser::Browser.new(css_elements: { '#email' => email_field }) }
   let(:email_field) { FakeBrowser::Element.new }
   let(:login_button) { FakeBrowser::Element.new }
+  # Writes a real PNG so specs can check what survives the run, and reports
+  # frames through on_frame the way Recorder does.
   let(:fake_recorder_class) do
-    Struct.new(:page, :directory) do
-      def start; end
+    Class.new do
+      attr_reader :paths
+
+      def initialize(page, directory, on_frame: nil, **)
+        @page = page
+        @directory = directory
+        @on_frame = on_frame
+        @paths = []
+      end
+
+      def start
+        path = File.join(@directory, format('frame-%06d.png', @paths.length))
+        ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red')).save(path)
+        @paths << path
+        @on_frame&.call(path, @paths.length - 1)
+      end
 
       def stop; end
-
-      def paths
-        ['frame-000000.png']
-      end
     end
   end
   let(:fake_gif_encoder_class) do
@@ -110,9 +122,9 @@ RSpec.describe Btape::Runner do
     Dir.mktmpdir do |directory|
       commands = [Btape::Command.new(name: 'Output', arguments: ['sub/demo.gif'], line_number: 1)]
 
-      output = runner.run(commands, base_directory: directory)
+      result = runner.run(commands, base_directory: directory)
 
-      expect(output).to eq(File.join(directory, 'sub/demo.gif'))
+      expect(result.output_path).to eq(File.join(directory, 'sub/demo.gif'))
     end
   end
 
@@ -239,9 +251,61 @@ RSpec.describe Btape::Runner do
     Dir.mktmpdir do |directory|
       commands = [Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1)]
 
-      output = runner.run(commands, base_directory: directory)
+      result = runner.run(commands, base_directory: directory)
+      paths, output = gif_encoder.written
 
-      expect(gif_encoder.written).to eq([['frame-000000.png'], output])
+      expect(paths.length).to eq(1)
+      expect(output).to eq(result.output_path)
+    end
+  end
+
+  it 'reports the frame count and viewport in the result' do
+    Dir.mktmpdir do |directory|
+      commands = [
+        Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+        Btape::Command.new(name: 'Viewport', arguments: ['800x600'], line_number: 2)
+      ]
+
+      result = runner.run(commands, base_directory: directory)
+
+      expect(result.frame_count).to eq(1)
+      expect([result.width, result.height]).to eq([800, 600])
+    end
+  end
+
+  # Without somewhere to keep them the frames live in a temporary directory
+  # that is gone by the time run returns, so reporting their paths would be
+  # handing back paths to files that no longer exist.
+  it 'leaves frame_paths empty when the frames were not kept' do
+    Dir.mktmpdir do |directory|
+      commands = [Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1)]
+
+      result = runner.run(commands, base_directory: directory)
+
+      expect(result.frame_paths).to be_empty
+    end
+  end
+
+  it 'keeps the frames on disk when given a frames directory' do
+    Dir.mktmpdir do |directory|
+      commands = [Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1)]
+
+      result = runner.run(commands, base_directory: directory, frames_directory: 'frames')
+
+      expect(result.frame_paths).to eq([File.join(directory, 'frames', 'frame-000000.png')])
+      expect(result.frame_paths).to all(satisfy { |path| File.exist?(path) })
+    end
+  end
+
+  it 'hands each frame to on_frame as it is captured' do
+    Dir.mktmpdir do |directory|
+      commands = [Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1)]
+      seen = []
+
+      runner.run(commands, base_directory: directory, on_frame: ->(path, index) { seen << [path, index] })
+
+      expect(seen.length).to eq(1)
+      expect(seen.first.last).to eq(0)
     end
   end
 end

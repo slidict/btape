@@ -5,10 +5,16 @@ require 'ferrum'
 require 'tmpdir'
 
 module Btape
-  # Drives a headless browser through the parsed commands and captures a
-  # screenshot per step, handing the frames off to GifEncoder.
+  # The recording session around a script: opens the browser, starts the
+  # recorder, hands the commands to Executor, and turns the captured frames
+  # into a GIF.
   class Runner
     DEFAULT_VIEWPORT = [1280, 720].freeze
+
+    # Everything one run threads through recording, kept in one object rather
+    # than a parameter list that grows with each new command.
+    Context = Struct.new(:commands, :directory, :settings, :geometry, :output_path, :on_frame, :keep_frames,
+                         keyword_init: true)
 
     def initialize(browser_factory: lambda { |options|
       Ferrum::Browser.new(**options)
@@ -18,16 +24,36 @@ module Btape
       @gif_encoder = gif_encoder
     end
 
-    def run(commands, base_directory: Dir.pwd, settings: {})
+    # Returns a Result. Pass `frames_directory:` to keep the PNG frames after
+    # the run, and `on_frame:` to be handed each one as it is captured.
+    def run(commands, base_directory: Dir.pwd, settings: {}, frames_directory: nil, on_frame: nil)
       settings = Settings.from_commands(commands).merge(settings)
-      output_path = resolve_output_path(commands, base_directory)
-      geometry = resolve_viewport(commands)
+      context = Context.new(
+        commands: commands,
+        settings: settings,
+        geometry: resolve_viewport(commands),
+        output_path: resolve_output_path(commands, base_directory),
+        on_frame: on_frame,
+        keep_frames: !frames_directory.nil?
+      )
 
-      Dir.mktmpdir('btape-') { |directory| record(commands, directory, settings, geometry, output_path) }
-      output_path
+      within_frames_directory(frames_directory, base_directory) do |directory|
+        context.directory = directory
+        record(context)
+      end
     end
 
     private
+
+    # Frames go to a temporary directory that is cleaned up as the run
+    # unwinds, unless the caller named a directory to keep them in.
+    def within_frames_directory(frames_directory, base_directory, &block)
+      return Dir.mktmpdir('btape-', &block) unless frames_directory
+
+      directory = File.expand_path(frames_directory, base_directory)
+      FileUtils.mkdir_p(directory)
+      block.call(directory)
+    end
 
     def resolve_output_path(commands, base_directory)
       output = commands.find { |command| command.name == 'Output' }&.arguments&.first
@@ -43,16 +69,17 @@ module Btape
       viewport ? viewport.split('x').map(&:to_i) : DEFAULT_VIEWPORT
     end
 
-    def record(commands, directory, settings, geometry, output_path)
+    def record(context)
       browser = nil
       recorder = nil
       begin
-        browser = open_browser(settings, geometry)
-        recorder = @recorder_class.new(browser, directory)
+        browser = open_browser(context.settings, context.geometry)
+        recorder = @recorder_class.new(browser, context.directory, on_frame: context.on_frame)
         recorder.start
-        execute(commands, browser)
+        Executor.new(browser: browser, recorder: recorder, settings: context.settings).call(context.commands)
         recorder.stop
-        @gif_encoder.write(recorder.paths, output_path)
+        @gif_encoder.write(recorder.paths, context.output_path)
+        result(context, recorder)
       ensure
         begin
           recorder&.stop
@@ -61,6 +88,17 @@ module Btape
         end
         browser&.quit
       end
+    end
+
+    def result(context, recorder)
+      width, height = context.geometry
+      Result.new(
+        output_path: context.output_path,
+        frame_paths: context.keep_frames ? recorder.paths.dup : [],
+        frame_count: recorder.paths.length,
+        width: width,
+        height: height
+      )
     end
 
     def open_browser(settings, geometry)
@@ -77,52 +115,6 @@ module Btape
       return { ws_url: settings.ws_url } if settings.ws_url
 
       { window_size: geometry }
-    end
-
-    def execute(commands, browser)
-      commands.each do |command|
-        perform(command, browser)
-      rescue StandardError => e
-        raise ScriptError.new(command.line_number, "#{command.name} failed: #{e.message}")
-      end
-    end
-
-    def perform(command, browser)
-      case command.name
-      when 'Output', 'Viewport', 'Set' then nil
-      when 'Goto' then browser.go_to(command.arguments.first)
-      when 'Click' then find(browser, command.arguments.first).click
-      when 'Type' then type(browser, command.arguments)
-      when 'Sleep' then sleep_seconds(command.arguments.first)
-      end
-    end
-
-    def type(browser, arguments)
-      element = find(browser, arguments.first)
-      element.focus
-      element.type(arguments.last)
-    end
-
-    def find(browser, selector)
-      element = if selector.start_with?('text=')
-                  literal = xpath_literal(selector.delete_prefix('text='))
-                  browser.at_xpath("//*[normalize-space(text())=#{literal}]")
-                else
-                  browser.at_css(selector)
-                end
-      element || raise("element not found: #{selector}")
-    end
-
-    def xpath_literal(text)
-      return %("#{text}") unless text.include?('"')
-
-      parts = text.split('"', -1).map { |part| %("#{part}") }
-      "concat(#{parts.join(%q(, '"', ))})"
-    end
-
-    def sleep_seconds(duration)
-      value, unit = duration.match(/\A(\d+(?:\.\d+)?)(ms|s)\z/).captures
-      sleep(value.to_f / (unit == 'ms' ? 1000 : 1))
     end
   end
 end

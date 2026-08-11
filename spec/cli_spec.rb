@@ -6,12 +6,17 @@ require 'tmpdir'
 
 RSpec.describe Btape::CLI do
   let(:fake_runner_class) do
-    Struct.new(:commands, :base_directory, :settings) do
-      def run(commands, base_directory:, settings: {})
+    Struct.new(:commands, :base_directory, :settings, :frames_directory) do
+      def run(commands, base_directory:, settings: {}, frames_directory: nil, **)
         self.commands = commands
         self.base_directory = base_directory
         self.settings = settings
-        File.join(base_directory, 'demo.gif')
+        self.frames_directory = frames_directory
+        Btape::Result.new(
+          output_path: File.join(base_directory, 'demo.gif'),
+          frame_paths: frames_directory ? [File.join(frames_directory, 'frame-000000.png')] : [],
+          frame_count: 1, width: 1280, height: 720
+        )
       end
     end
   end
@@ -74,6 +79,20 @@ RSpec.describe Btape::CLI do
     run_tape(argv_prefix: ['--set', 'CaptureMode']) do |status:, err:, **|
       expect(status).to eq(1)
       expect(err).to include('--set expects NAME=VALUE')
+    end
+  end
+
+  it 'passes --frames-dir through and reports the frames it kept' do
+    run_tape(argv_prefix: ['--frames-dir', '/tmp/btape-frames']) do |status:, out:, runner:, **|
+      expect(status).to eq(0)
+      expect(runner.frames_directory).to eq('/tmp/btape-frames')
+      expect(out).to include('Kept 1 frame(s) in /tmp/btape-frames')
+    end
+  end
+
+  it 'says nothing about frames when none were kept' do
+    run_tape do |out:, **|
+      expect(out).not_to include('Kept')
     end
   end
 

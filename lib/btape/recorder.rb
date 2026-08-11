@@ -4,10 +4,11 @@ module Btape
   # Captures periodic screenshots of a page on a background thread until
   # stopped, building the frame sequence GifEncoder turns into a GIF.
   class Recorder
-    def initialize(page, directory, interval: 0.1)
+    def initialize(page, directory, interval: 0.1, on_frame: nil)
       @page = page
       @directory = directory
       @interval = interval
+      @on_frame = on_frame
       @paths = []
       @mutex = Mutex.new
     end
@@ -40,11 +41,16 @@ module Btape
     private
 
     def capture
-      @mutex.synchronize do
-        path = File.join(@directory, format('frame-%06d.png', @paths.length))
+      path, index = @mutex.synchronize do
+        index = @paths.length
+        path = File.join(@directory, format('frame-%06d.png', index))
         screenshot(path)
         @paths << path
+        [path, index]
       end
+      # Outside the lock: the callback is the caller's code and may take as
+      # long as it likes without holding up the next capture.
+      @on_frame&.call(path, index)
     end
 
     def screenshot(path)

@@ -87,6 +87,18 @@ RSpec.describe Btape::Recorder do
     expect { recorder.stop }.to raise_error('boom')
   end
 
+  it 'hands each captured frame to on_frame with its index' do
+    seen = []
+    recorder = described_class.new(page, directory, interval: 60, on_frame: ->(path, index) { seen << [path, index] })
+
+    recorder.start
+    recorder.stop
+
+    expect(seen).to eq(
+      [[File.join(directory, 'frame-000000.png'), 0], [File.join(directory, 'frame-000001.png'), 1]]
+    )
+  end
+
   it 'does nothing when stopped without ever being started' do
     recorder = described_class.new(page, directory, interval: 60)
 

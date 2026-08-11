@@ -6,7 +6,7 @@ module Btape
   # Entry point invoked by the `btape` executable: parses argv, runs the
   # script, and reports success or failure.
   class CLI
-    Options = Struct.new(:help, :settings)
+    Options = Struct.new(:help, :settings, :frames_directory)
 
     USAGE = 'Usage: btape [options] SCRIPT.tape'
     HELP_ARGUMENTS = %w[help -h --help].freeze
@@ -37,8 +37,20 @@ module Btape
     def record(argument, options)
       script = File.expand_path(argument)
       commands = Parser.new.parse(File.read(script))
-      output = @runner.run(commands, base_directory: File.dirname(script), settings: settings(options))
-      @out.puts "Created #{output}"
+      result = @runner.run(
+        commands,
+        base_directory: File.dirname(script),
+        settings: settings(options),
+        frames_directory: options.frames_directory
+      )
+      @out.puts "Created #{result.output_path}"
+      report_frames(result)
+    end
+
+    def report_frames(result)
+      return if result.frame_paths.empty?
+
+      @out.puts "Kept #{result.frame_paths.length} frame(s) in #{File.dirname(result.frame_paths.first)}"
     end
 
     # The tape's own `Set` lines are the baseline; these flags override them,
@@ -65,6 +77,9 @@ module Btape
 
           options.settings[name] = value
         end
+        parser.on('--frames-dir DIR', 'Write the PNG frames here and keep them') do |directory|
+          options.frames_directory = directory
+        end
         parser.on('-h', '--help', 'Show this message') { options.help = true }
       end
     end
@@ -75,6 +90,7 @@ module Btape
       @out.puts 'Options:'
       @out.puts '  --ws-url URL     Connect to a browser already running at this CDP url'
       @out.puts '  --set NAME=VALUE Override a setting, as a Set line would'
+      @out.puts '  --frames-dir DIR Write the PNG frames here and keep them'
       @out.puts
       @out.puts 'Commands:'
       HELP_COMMANDS.each { |command| @out.puts "  #{command}" }
