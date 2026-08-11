@@ -59,15 +59,15 @@ module Btape
         return pack_codes(codes)
       end
 
-      current = [pixels.first]
+      current_code = pixels.first
       pixels.drop(1).each do |pixel|
-        candidate = current + [pixel]
-        if dictionary.key?(candidate)
-          current = candidate
+        key = (current_code << 8) | pixel
+        if dictionary.key?(key)
+          current_code = dictionary[key]
           next
         end
 
-        emit.call(dictionary[current])
+        emit.call(current_code)
 
         if next_code == MAX_DICTIONARY_SIZE
           emit.call(CLEAR_CODE)
@@ -75,20 +75,20 @@ module Btape
           next_code = FINISH_CODE + 1
           code_width = 9
         else
-          dictionary[candidate] = next_code
+          dictionary[key] = next_code
           next_code += 1
           code_width += 1 if next_code > (1 << code_width) - 1 && code_width < MAX_CODE_WIDTH
         end
 
-        current = [pixel]
+        current_code = pixel
       end
-      emit.call(dictionary[current])
+      emit.call(current_code)
       emit.call(FINISH_CODE)
       pack_codes(codes)
     end
 
     def root_dictionary
-      (0..255).to_h { |value| [[value], value] }
+      (0..255).to_h { |value| [value, value] }
     end
 
     def rgb332(pixel)
