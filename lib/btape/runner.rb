@@ -18,11 +18,12 @@ module Btape
       @gif_encoder = gif_encoder
     end
 
-    def run(commands, base_directory: Dir.pwd)
+    def run(commands, base_directory: Dir.pwd, settings: {})
+      settings = Settings.from_commands(commands).merge(settings)
       output_path = resolve_output_path(commands, base_directory)
-      width, height = resolve_viewport(commands)
+      geometry = resolve_viewport(commands)
 
-      Dir.mktmpdir('btape-') { |directory| record(commands, directory, width, height, output_path) }
+      Dir.mktmpdir('btape-') { |directory| record(commands, directory, settings, geometry, output_path) }
       output_path
     end
 
@@ -42,11 +43,11 @@ module Btape
       viewport ? viewport.split('x').map(&:to_i) : DEFAULT_VIEWPORT
     end
 
-    def record(commands, directory, width, height, output_path)
+    def record(commands, directory, settings, geometry, output_path)
       browser = nil
       recorder = nil
       begin
-        browser = @browser_factory.call(window_size: [width, height])
+        browser = open_browser(settings, geometry)
         recorder = @recorder_class.new(browser, directory)
         recorder.start
         execute(commands, browser)
@@ -62,6 +63,22 @@ module Btape
       end
     end
 
+    def open_browser(settings, geometry)
+      width, height = geometry
+      browser = @browser_factory.call(browser_options(settings, geometry))
+      # window_size only ever reaches Chrome as a launch flag, so a browser we
+      # connected to over ws_url keeps whatever size it was started with and
+      # has to be resized over the wire instead.
+      browser.resize(width: width, height: height) if settings.ws_url
+      browser
+    end
+
+    def browser_options(settings, geometry)
+      return { ws_url: settings.ws_url } if settings.ws_url
+
+      { window_size: geometry }
+    end
+
     def execute(commands, browser)
       commands.each do |command|
         perform(command, browser)
@@ -72,7 +89,7 @@ module Btape
 
     def perform(command, browser)
       case command.name
-      when 'Output', 'Viewport' then nil
+      when 'Output', 'Viewport', 'Set' then nil
       when 'Goto' then browser.go_to(command.arguments.first)
       when 'Click' then find(browser, command.arguments.first).click
       when 'Type' then type(browser, command.arguments)

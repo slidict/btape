@@ -24,13 +24,23 @@ module FakeBrowser
 
   class Browser
     attr_accessor :window_size
-    attr_reader :visited_urls
+    attr_reader :visited_urls, :resized_to, :connected_with
     attr_writer :text_element
 
     def initialize(css_elements: {})
       @visited_urls = []
       @css_elements = css_elements
       @quit_called = false
+    end
+
+    def connect(options)
+      @connected_with = options
+      @window_size = options[:window_size]
+      self
+    end
+
+    def resize(width:, height:)
+      @resized_to = [width, height]
     end
 
     def quit_called?
@@ -81,10 +91,7 @@ RSpec.describe Btape::Runner do
 
   def runner
     described_class.new(
-      browser_factory: lambda { |options|
-        browser.window_size = options[:window_size]
-        browser
-      },
+      browser_factory: ->(options) { browser.connect(options) },
       recorder_class: fake_recorder_class,
       gif_encoder: gif_encoder
     )
@@ -173,6 +180,58 @@ RSpec.describe Btape::Runner do
 
       expect { runner.run(commands, base_directory: directory) }.to raise_error(Btape::ScriptError)
       expect(browser.quit_called?).to be true
+    end
+  end
+
+  it 'connects to a remote browser when the tape sets WsUrl' do
+    Dir.mktmpdir do |directory|
+      commands = [
+        Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+        Btape::Command.new(name: 'Set', arguments: %w[WsUrl ws://chrome:3000], line_number: 2)
+      ]
+
+      runner.run(commands, base_directory: directory)
+
+      expect(browser.connected_with).to eq({ ws_url: 'ws://chrome:3000' })
+    end
+  end
+
+  # window_size is only a Chrome launch flag, so a browser reached over
+  # ws_url has to be resized over the wire instead.
+  it 'resizes a remote browser to the viewport' do
+    Dir.mktmpdir do |directory|
+      commands = [
+        Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+        Btape::Command.new(name: 'Viewport', arguments: ['800x600'], line_number: 2),
+        Btape::Command.new(name: 'Set', arguments: %w[WsUrl ws://chrome:3000], line_number: 3)
+      ]
+
+      runner.run(commands, base_directory: directory)
+
+      expect(browser.resized_to).to eq([800, 600])
+    end
+  end
+
+  it 'does not resize a browser it launched itself' do
+    Dir.mktmpdir do |directory|
+      commands = [Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1)]
+
+      runner.run(commands, base_directory: directory)
+
+      expect(browser.resized_to).to be_nil
+    end
+  end
+
+  it 'lets the caller override what the tape set' do
+    Dir.mktmpdir do |directory|
+      commands = [
+        Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+        Btape::Command.new(name: 'Set', arguments: %w[WsUrl ws://from-tape:3000], line_number: 2)
+      ]
+
+      runner.run(commands, base_directory: directory, settings: { ws_url: 'ws://from-caller:3000' })
+
+      expect(browser.connected_with).to eq({ ws_url: 'ws://from-caller:3000' })
     end
   end
 
