@@ -18,6 +18,9 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'chunky_png', '~> 1.4'
   spec.add_dependency 'ferrum', '~> 0.16'
+  # --verbose logs through Logger, which stopped being a default gem in Ruby
+  # 4.0 and has to be asked for by name.
+  spec.add_dependency 'logger', '~> 1.5'
 
   # Where a published gem came from, so it can be audited without guessing.
   # The homepage is set above and needs no metadata entry of its own; adding

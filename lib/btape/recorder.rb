@@ -10,6 +10,12 @@ module Btape
   # Screenshot command, which is what a tape wants when it needs one frame per
   # page rather than a few hundred near-identical ones.
   class Recorder
+    # A name becomes part of a filename, so it may not carry anything that
+    # would put the frame somewhere other than the frames directory. Parser
+    # checks it too, to report a bad Screenshot line with its line number;
+    # this is the check for everyone else, since capture is public API.
+    FRAME_NAME = /\A[\w.-]+\z/
+
     def initialize(page, directory, interval: 0.1, mode: :interval, on_frame: nil, max_frames: nil,
                    lock: Monitor.new)
       @page = page
@@ -55,6 +61,7 @@ module Btape
     # Captures one frame now. A name puts it at a predictable path, so a
     # caller can pick a particular frame out of the run.
     def capture(name: nil)
+      validate_name!(name)
       path, index = @lock.synchronize do
         exhausted! if @max_frames && @paths.length >= @max_frames
 
@@ -81,6 +88,12 @@ module Btape
 
     def manual?
       @mode == :manual
+    end
+
+    def validate_name!(name)
+      return if name.nil? || FRAME_NAME.match?(name)
+
+      raise Error, "frame name must be letters, numbers, dashes, dots or underscores: #{name.inspect}"
     end
 
     def filename(name)

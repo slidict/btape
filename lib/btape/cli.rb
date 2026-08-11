@@ -16,6 +16,8 @@ module Btape
                      'Evaluate JAVASCRIPT', 'WaitFor SELECTOR [TIMEOUT]',
                      'WaitForJS JAVASCRIPT [TIMEOUT]', 'Frame SELECTOR|main',
                      'Press KEY [COUNT]'].freeze
+    # The two ways a flag can name a browser: --ws-url and --set WsUrl=.
+    WS_URL_KEYS = [:ws_url, 'WsUrl'].freeze
 
     # The runner is built after the flags are read, so that --verbose can
     # reach it. Pass one to use it as given.
@@ -71,8 +73,15 @@ module Btape
 
     # The tape's own `Set` lines are the baseline; these flags override them,
     # which is what lets one tape run against a local and a remote browser.
+    #
+    # BTAPE_WS_URL is the last resort, and only applies when neither flag named
+    # a browser. Settings resolves --ws-url and --set WsUrl to the same
+    # attribute, so merging the environment in unconditionally would let it
+    # overwrite the --set value rather than fall back to it.
     def settings(options)
-      options.settings.merge(ws_url: options.settings[:ws_url] || ENV.fetch('BTAPE_WS_URL', nil))
+      return options.settings if WS_URL_KEYS.any? { |key| options.settings.key?(key) }
+
+      options.settings.merge(ws_url: ENV.fetch('BTAPE_WS_URL', nil))
     end
 
     def parse_options(argv, options)

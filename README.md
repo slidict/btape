@@ -90,7 +90,7 @@ Usage: btape [options] SCRIPT.tape
   --verbose        Report each command on stderr as it runs
 ```
 
-`BTAPE_WS_URL` is used when `--ws-url` is not given.
+`BTAPE_WS_URL` is used when neither `--ws-url` nor `--set WsUrl=` is given.
 
 ### A browser running somewhere else
 
@@ -142,7 +142,11 @@ Nothing has to touch the filesystem. Pass an IO to write the GIF into:
 ```ruby
 buffer = StringIO.new(+''.b)
 Btape::Runner.new.run(commands, base_directory: '.', output: buffer)
-record.animation.attach(io: StringIO.new(buffer.string), filename: 'deck.gif')
+
+# `buffer.string` is the GIF. Hand it to whatever holds on to it — an Active
+# Storage attachment on one of your own records, say:
+deck = Deck.find(params[:id])
+deck.animation.attach(io: StringIO.new(buffer.string), filename: 'deck.gif')
 ```
 
 or use the encoder on its own, with PNG paths or ChunkyPNG images:

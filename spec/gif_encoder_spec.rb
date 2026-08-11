@@ -260,6 +260,12 @@ RSpec.describe Btape::GifEncoder do
       expect(data[6, 4].unpack('vv')).to eq([10, 5])
     end
 
+    it 'keeps a row of height when the aspect ratio would round it away' do
+      data = described_class.new(width: 10).encode([ChunkyPNG::Image.new(400, 3, ChunkyPNG::Color('red'))])
+
+      expect(data[6, 4].unpack('vv')).to eq([10, 1])
+    end
+
     it 'leaves the frames alone at the default scale' do
       data = described_class.new.encode([ChunkyPNG::Image.new(40, 20, ChunkyPNG::Color('red'))])
 
