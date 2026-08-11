@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>btape demo</title>
+<style>
+  html, body {
+    margin: 0;
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .card {
+    background: #1e293b;
+    border-radius: 12px;
+    padding: 40px 48px;
+    width: 320px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
+    text-align: center;
+  }
+  h1 {
+    font-size: 20px;
+    margin: 0 0 24px;
+    color: #f8fafc;
+  }
+  button {
+    background: #6366f1;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 10px 20px;
+    font-size: 15px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: #4f46e5;
+  }
+  form {
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 20px;
+    text-align: left;
+  }
+  form.visible {
+    display: flex;
+  }
+  label {
+    display: block;
+    font-size: 13px;
+    color: #94a3b8;
+    margin-bottom: 4px;
+  }
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 9px 10px;
+    border-radius: 6px;
+    border: 1px solid #334155;
+    background: #0f172a;
+    color: #f8fafc;
+    font-size: 14px;
+  }
+  #welcome {
+    display: none;
+    margin-top: 20px;
+    color: #4ade80;
+    font-size: 15px;
+  }
+  #welcome.visible {
+    display: block;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>btape demo</h1>
+    <button id="login-toggle" type="button">Login</button>
+    <form id="login-form">
+      <div>
+        <label for="email">Email</label>
+        <input id="email" type="email" autocomplete="off">
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input id="password" type="password" autocomplete="off">
+      </div>
+      <button id="signin" type="button">Sign in</button>
+    </form>
+    <p id="welcome"></p>
+  </div>
+  <script>
+    document.getElementById('login-toggle').addEventListener('click', () => {
+      document.getElementById('login-toggle').style.display = 'none';
+      document.getElementById('login-form').classList.add('visible');
+    });
+    document.getElementById('signin').addEventListener('click', () => {
+      const email = document.getElementById('email').value || 'friend';
+      document.getElementById('login-form').classList.remove('visible');
+      const welcome = document.getElementById('welcome');
+      welcome.textContent = `Welcome, ${email}!`;
+      welcome.classList.add('visible');
+    });
+  </script>
+</body>
+</html>
