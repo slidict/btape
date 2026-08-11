@@ -13,7 +13,8 @@ module Btape
     HELP_COMMANDS = ['Output PATH', 'Viewport WIDTHxHEIGHT', 'Goto URL', 'Click SELECTOR',
                      'Type SELECTOR TEXT', 'Sleep DURATION', 'Set NAME VALUE', 'Screenshot [NAME]',
                      'Evaluate JAVASCRIPT', 'WaitFor SELECTOR [TIMEOUT]',
-                     'WaitForJS JAVASCRIPT [TIMEOUT]'].freeze
+                     'WaitForJS JAVASCRIPT [TIMEOUT]', 'Frame SELECTOR|main',
+                     'Press KEY [COUNT]'].freeze
 
     def initialize(out: $stdout, err: $stderr, runner: Runner.new)
       @out = out

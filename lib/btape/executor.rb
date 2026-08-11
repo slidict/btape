@@ -16,11 +16,17 @@ module Btape
     HANDLERS = {
       'Goto' => :goto, 'Click' => :click, 'Type' => :enter, 'Sleep' => :pause,
       'Screenshot' => :screenshot, 'Evaluate' => :evaluate,
-      'WaitFor' => :wait_for_element, 'WaitForJS' => :wait_for_js
+      'WaitFor' => :wait_for_element, 'WaitForJS' => :wait_for_js,
+      'Frame' => :frame, 'Press' => :press
     }.freeze
+
+    MAIN_FRAME = 'main'
 
     def initialize(browser:, recorder:, settings:)
       @browser = browser
+      # Elements and JavaScript are looked up in the current frame, which
+      # starts as the page itself and moves when a Frame command says so.
+      @target = browser
       @recorder = recorder
       @settings = settings
     end
@@ -42,6 +48,22 @@ module Btape
 
     def goto(url)
       @browser.go_to(url)
+      # Whatever frame we were in belongs to the page we just left.
+      @target = @browser
+    end
+
+    # Points the following commands at an iframe, so a tape can reach an API
+    # inside it — a slide deck's own navigation, say — rather than only what
+    # the outer document exposes. Nesting works by switching again from
+    # within, and `Frame main` returns to the page.
+    def frame(selector)
+      return @target = @browser if selector == MAIN_FRAME
+
+      @target = find(selector).frame || raise("#{selector} is not a frame")
+    end
+
+    def press(key, count = '1')
+      Integer(count, 10).times { @browser.keyboard.type(key.to_sym) }
     end
 
     def click(selector)
@@ -63,7 +85,7 @@ module Btape
     end
 
     def evaluate(expression)
-      @browser.evaluate(expression)
+      @target.evaluate(expression)
     end
 
     def wait_for_element(selector, timeout = nil)
@@ -118,10 +140,10 @@ module Btape
     end
 
     def element(selector)
-      return @browser.at_css(selector) unless selector.start_with?('text=')
+      return @target.at_css(selector) unless selector.start_with?('text=')
 
       literal = xpath_literal(selector.delete_prefix('text='))
-      @browser.at_xpath("//*[normalize-space(text())=#{literal}]")
+      @target.at_xpath("//*[normalize-space(text())=#{literal}]")
     end
 
     def xpath_literal(text)

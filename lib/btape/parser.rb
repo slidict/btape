@@ -14,7 +14,8 @@ module Btape
     # argument is optional.
     ARITY = {
       'Output' => 1, 'Viewport' => 1, 'Goto' => 1, 'Click' => 1, 'Type' => 2, 'Sleep' => 1,
-      'Set' => 2, 'Screenshot' => 0..1, 'Evaluate' => 1, 'WaitFor' => 1..2, 'WaitForJS' => 1..2
+      'Set' => 2, 'Screenshot' => 0..1, 'Evaluate' => 1, 'WaitFor' => 1..2, 'WaitForJS' => 1..2,
+      'Frame' => 1, 'Press' => 1..2
     }.freeze
 
     FRAME_NAME = /\A[\w.-]+\z/
@@ -53,7 +54,14 @@ module Btape
       when 'Set' then Settings.validate!(*arguments)
       when 'Screenshot' then validate_frame_name(arguments.first, number)
       when 'WaitFor', 'WaitForJS' then validate_wait_timeout(name, arguments, number)
+      when 'Press' then validate_press_count(arguments[1], number)
       end
+    end
+
+    def validate_press_count(value, number)
+      return if value.nil? || (/\A\d+\z/.match?(value) && value.to_i.positive?)
+
+      raise ScriptError.new(number, 'Press count must be a positive integer')
     end
 
     def validate_wait_timeout(name, arguments, number)

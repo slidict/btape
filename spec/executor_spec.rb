@@ -2,38 +2,81 @@
 
 require_relative 'spec_helper'
 
-RSpec.describe Btape::Executor do
-  # Answers each evaluate with the next queued value, raising anything that
-  # was queued as an exception, so a spec can describe a page that becomes
-  # ready part way through a wait.
-  let(:browser_class) do
-    Class.new do
-      attr_reader :evaluated, :elements
+# Enough of Ferrum for Executor's dispatch: a page that answers lookups and
+# evaluate, the frame an iframe node hands back, and the keyboard.
+module FakeFerrum
+  class Keyboard
+    attr_reader :typed
 
-      def initialize(answers: [], elements: {})
-        @answers = answers
-        @evaluated = []
-        @elements = elements
-      end
+    def initialize
+      @typed = []
+    end
 
-      def evaluate(expression)
-        @evaluated << expression
-        answer = @answers.empty? ? nil : @answers.shift
-        raise answer if answer.is_a?(Exception)
-
-        answer
-      end
-
-      def at_css(selector)
-        found = @elements[selector]
-        found.is_a?(Array) ? found.shift : found
-      end
-
-      def at_xpath(_expression)
-        nil
-      end
+    def type(key)
+      @typed << key
     end
   end
+
+  # A Frame answers the same lookup and evaluate calls a page does.
+  class Frame
+    attr_reader :evaluated
+
+    def initialize
+      @evaluated = []
+    end
+
+    def evaluate(expression)
+      @evaluated << expression
+      nil
+    end
+
+    def at_css(_selector)
+      nil
+    end
+  end
+
+  Node = Struct.new(:frame)
+
+  # Answers each evaluate with the next queued value, raising anything queued
+  # as an exception, so a spec can describe a page that becomes ready part way
+  # through a wait. An element queued as an array is answered one entry per
+  # lookup, for the same reason.
+  class Browser
+    attr_reader :evaluated, :visited_urls, :keyboard
+
+    def initialize(answers: [], elements: {})
+      @answers = answers
+      @elements = elements
+      @evaluated = []
+      @visited_urls = []
+      @keyboard = Keyboard.new
+    end
+
+    def evaluate(expression)
+      @evaluated << expression
+      answer = @answers.empty? ? nil : @answers.shift
+      raise answer if answer.is_a?(Exception)
+
+      answer
+    end
+
+    def at_css(selector)
+      found = @elements[selector]
+      found.is_a?(Array) ? found.shift : found
+    end
+
+    def at_xpath(_expression)
+      nil
+    end
+
+    def go_to(url)
+      @visited_urls << url
+    end
+  end
+end
+
+RSpec.describe Btape::Executor do
+  let(:browser_class) { FakeFerrum::Browser }
   let(:recorder) { instance_double(Btape::Recorder) }
 
   def executor(browser, settings = {})
@@ -115,6 +158,68 @@ RSpec.describe Btape::Executor do
 
     expect { executor(browser).call([command('WaitFor', '#deck', '10ms')]) }
       .to raise_error(Btape::ScriptError, /timed out after 0.01s waiting for #deck to appear/)
+  end
+
+  describe 'Frame' do
+    it 'sends later commands into the iframe' do
+      frame = FakeFerrum::Frame.new
+      browser = browser_class.new(elements: { '#preview' => FakeFerrum::Node.new(frame) })
+
+      executor(browser).call(
+        [command('Frame', '#preview'), command('Evaluate', 'Reveal.slide(2, 0)')]
+      )
+
+      expect(frame.evaluated).to eq(['Reveal.slide(2, 0)'])
+      expect(browser.evaluated).to be_empty
+    end
+
+    it 'returns to the page on Frame main' do
+      frame = FakeFerrum::Frame.new
+      browser = browser_class.new(elements: { '#preview' => FakeFerrum::Node.new(frame) })
+
+      executor(browser).call(
+        [command('Frame', '#preview'), command('Frame', 'main'), command('Evaluate', 'document.title')]
+      )
+
+      expect(browser.evaluated).to eq(['document.title'])
+    end
+
+    # The frame we were in belonged to the page we just left.
+    it 'returns to the page after navigating' do
+      frame = FakeFerrum::Frame.new
+      browser = browser_class.new(elements: { '#preview' => FakeFerrum::Node.new(frame) })
+
+      executor(browser).call(
+        [command('Frame', '#preview'), command('Goto', 'http://example.test'), command('Evaluate', 'x')]
+      )
+
+      expect(browser.evaluated).to eq(['x'])
+    end
+
+    it 'reports a selector that is not a frame' do
+      browser = browser_class.new(elements: { '#heading' => FakeFerrum::Node.new(nil) })
+
+      expect { executor(browser).call([command('Frame', '#heading')]) }
+        .to raise_error(Btape::ScriptError, /#heading is not a frame/)
+    end
+  end
+
+  describe 'Press' do
+    it 'types the key once by default' do
+      browser = browser_class.new
+
+      executor(browser).call([command('Press', 'Right')])
+
+      expect(browser.keyboard.typed).to eq([:Right])
+    end
+
+    it 'repeats the key COUNT times' do
+      browser = browser_class.new
+
+      executor(browser).call([command('Press', 'Right', '3')])
+
+      expect(browser.keyboard.typed).to eq(%i[Right Right Right])
+    end
   end
 
   it 'reports the line a failing command came from' do
