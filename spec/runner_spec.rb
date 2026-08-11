@@ -69,27 +69,37 @@ RSpec.describe Btape::Runner do
   let(:browser) { FakeBrowser::Browser.new(css_elements: { '#email' => email_field }) }
   let(:email_field) { FakeBrowser::Element.new }
   let(:login_button) { FakeBrowser::Element.new }
-  # Writes a real PNG so specs can check what survives the run, and reports
-  # frames through on_frame the way Recorder does.
+  # Writes a real PNG so specs can check what survives the run, and mirrors
+  # Recorder's interval/manual split and on_frame callback.
   let(:fake_recorder_class) do
     Class.new do
-      attr_reader :paths
+      attr_reader :paths, :named_paths, :interval, :mode
 
-      def initialize(page, directory, on_frame: nil, **)
+      def initialize(page, directory, interval: 0.1, mode: :interval, on_frame: nil)
         @page = page
         @directory = directory
+        @interval = interval
+        @mode = mode
         @on_frame = on_frame
         @paths = []
+        @named_paths = {}
       end
 
       def start
-        path = File.join(@directory, format('frame-%06d.png', @paths.length))
-        ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red')).save(path)
-        @paths << path
-        @on_frame&.call(path, @paths.length - 1)
+        capture unless @mode.to_sym == :manual
       end
 
       def stop; end
+
+      def capture(name: nil)
+        path = File.join(@directory, name ? "frame-#{name}.png" : format('frame-%06d.png', @paths.length))
+        ChunkyPNG::Image.new(2, 2, ChunkyPNG::Color('red')).save(path)
+        index = @paths.length
+        @paths << path
+        @named_paths[name] = path if name
+        @on_frame&.call(path, index)
+        path
+      end
     end
   end
   let(:fake_gif_encoder_class) do
@@ -294,6 +304,49 @@ RSpec.describe Btape::Runner do
 
       expect(result.frame_paths).to eq([File.join(directory, 'frames', 'frame-000000.png')])
       expect(result.frame_paths).to all(satisfy { |path| File.exist?(path) })
+    end
+  end
+
+  it 'builds the recorder from the capture settings' do
+    Dir.mktmpdir do |directory|
+      commands = [
+        Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+        Btape::Command.new(name: 'Set', arguments: %w[CaptureMode manual], line_number: 2),
+        Btape::Command.new(name: 'Set', arguments: %w[Framerate 20], line_number: 3),
+        Btape::Command.new(name: 'Screenshot', arguments: [], line_number: 4)
+      ]
+      recorders = []
+      recorder_class = fake_recorder_class
+      spy = Class.new(recorder_class) do
+        define_method(:initialize) do |*args, **options|
+          super(*args, **options)
+          recorders << self
+        end
+      end
+
+      described_class.new(
+        browser_factory: ->(options) { browser.connect(options) },
+        recorder_class: spy,
+        gif_encoder: gif_encoder
+      ).run(commands, base_directory: directory)
+
+      expect(recorders.first.mode).to eq('manual')
+      expect(recorders.first.interval).to eq(0.05)
+    end
+  end
+
+  it 'records a Screenshot NAME under that name' do
+    Dir.mktmpdir do |directory|
+      commands = [
+        Btape::Command.new(name: 'Output', arguments: ['demo.gif'], line_number: 1),
+        Btape::Command.new(name: 'Set', arguments: %w[CaptureMode manual], line_number: 2),
+        Btape::Command.new(name: 'Screenshot', arguments: ['cover'], line_number: 3)
+      ]
+
+      result = runner.run(commands, base_directory: directory, frames_directory: 'frames')
+
+      expect(result.named_frames).to eq('cover' => File.join(directory, 'frames', 'frame-cover.png'))
+      expect(result.frame_count).to eq(1)
     end
   end
 

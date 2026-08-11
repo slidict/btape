@@ -14,8 +14,10 @@ module Btape
     # argument is optional.
     ARITY = {
       'Output' => 1, 'Viewport' => 1, 'Goto' => 1, 'Click' => 1, 'Type' => 2, 'Sleep' => 1,
-      'Set' => 2
+      'Set' => 2, 'Screenshot' => 0..1
     }.freeze
+
+    FRAME_NAME = /\A[\w.-]+\z/
 
     def parse(source)
       source.each_line.with_index(1).filter_map do |line, number|
@@ -49,7 +51,16 @@ module Btape
       when 'Viewport' then validate_viewport(arguments.first, number)
       when 'Sleep' then validate_sleep(arguments.first, number)
       when 'Set' then Settings.validate!(*arguments)
+      when 'Screenshot' then validate_frame_name(arguments.first, number)
       end
+    end
+
+    # The name becomes part of a filename, so keep it to something that
+    # cannot escape the frames directory.
+    def validate_frame_name(value, number)
+      return if value.nil? || FRAME_NAME.match?(value)
+
+      raise ScriptError.new(number, 'Screenshot name must be letters, numbers, dashes, dots or underscores')
     end
 
     def validate_viewport(value, number)

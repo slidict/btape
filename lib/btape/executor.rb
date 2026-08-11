@@ -33,6 +33,7 @@ module Btape
       when 'Click' then find(command.arguments.first).click
       when 'Type' then type(command.arguments)
       when 'Sleep' then sleep(Duration.parse(command.arguments.first))
+      when 'Screenshot' then @recorder.capture(name: command.arguments.first)
       end
     end
 

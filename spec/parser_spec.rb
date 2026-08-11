@@ -40,6 +40,17 @@ RSpec.describe Btape::Parser do
       .to raise_error(Btape::ScriptError, 'line 2: unknown setting "Sparkles"')
   end
 
+  it 'accepts Screenshot with and without a name' do
+    commands = described_class.new.parse("Screenshot\nScreenshot cover\n")
+
+    expect(commands.map(&:arguments)).to eq([[], ['cover']])
+  end
+
+  it 'rejects a Screenshot name that could escape the frames directory' do
+    expect { described_class.new.parse("Screenshot ../etc/passwd\n") }
+      .to raise_error(Btape::ScriptError, /line 1: Screenshot name/)
+  end
+
   it 'reports the wrong number of arguments' do
     expect { described_class.new.parse("Set CaptureMode\n") }
       .to raise_error(Btape::ScriptError, 'line 1: Set expects 2 argument(s), got 1')

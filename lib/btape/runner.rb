@@ -74,7 +74,7 @@ module Btape
       recorder = nil
       begin
         browser = open_browser(context.settings, context.geometry)
-        recorder = @recorder_class.new(browser, context.directory, on_frame: context.on_frame)
+        recorder = build_recorder(browser, context)
         recorder.start
         Executor.new(browser: browser, recorder: recorder, settings: context.settings).call(context.commands)
         recorder.stop
@@ -90,11 +90,22 @@ module Btape
       end
     end
 
+    def build_recorder(browser, context)
+      @recorder_class.new(
+        browser,
+        context.directory,
+        interval: 1.0 / context.settings.framerate,
+        mode: context.settings.capture_mode,
+        on_frame: context.on_frame
+      )
+    end
+
     def result(context, recorder)
       width, height = context.geometry
       Result.new(
         output_path: context.output_path,
         frame_paths: context.keep_frames ? recorder.paths.dup : [],
+        named_frames: context.keep_frames ? recorder.named_paths.dup : {},
         frame_count: recorder.paths.length,
         width: width,
         height: height

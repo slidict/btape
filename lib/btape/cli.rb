@@ -11,7 +11,7 @@ module Btape
     USAGE = 'Usage: btape [options] SCRIPT.tape'
     HELP_ARGUMENTS = %w[help -h --help].freeze
     HELP_COMMANDS = ['Output PATH', 'Viewport WIDTHxHEIGHT', 'Goto URL', 'Click SELECTOR',
-                     'Type SELECTOR TEXT', 'Sleep DURATION', 'Set NAME VALUE'].freeze
+                     'Type SELECTOR TEXT', 'Sleep DURATION', 'Set NAME VALUE', 'Screenshot [NAME]'].freeze
 
     def initialize(out: $stdout, err: $stderr, runner: Runner.new)
       @out = out

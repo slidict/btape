@@ -105,4 +105,47 @@ RSpec.describe Btape::Recorder do
     expect { recorder.stop }.not_to raise_error
     expect(page.screenshots).to be_empty
   end
+
+  describe 'manual mode' do
+    # The point of manual mode is that nothing is captured behind the
+    # script's back, so a 20-page deck yields 20 frames and not 600.
+    it 'captures nothing on start or stop' do
+      recorder = described_class.new(page, directory, interval: 0.01, mode: :manual)
+
+      recorder.start
+      recorder.stop
+
+      expect(page.screenshots).to be_empty
+    end
+
+    it 'captures only when the script asks' do
+      recorder = described_class.new(page, directory, interval: 0.01, mode: :manual)
+
+      recorder.start
+      recorder.capture
+      recorder.capture
+      recorder.stop
+
+      expect(recorder.paths.length).to eq(2)
+    end
+  end
+
+  it 'gives a named frame a predictable path and records it by name' do
+    recorder = described_class.new(page, directory, mode: :manual)
+
+    path = recorder.capture(name: 'page-01')
+
+    expect(path).to eq(File.join(directory, 'frame-page-01.png'))
+    expect(recorder.named_paths).to eq('page-01' => path)
+  end
+
+  it 'keeps numbering unnamed frames sequentially around named ones' do
+    recorder = described_class.new(page, directory, mode: :manual)
+
+    recorder.capture
+    recorder.capture(name: 'cover')
+    recorder.capture
+
+    expect(recorder.paths.last).to eq(File.join(directory, 'frame-000002.png'))
+  end
 end
