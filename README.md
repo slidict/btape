@@ -1,5 +1,9 @@
 # btape
 
+<p align="center">
+  <img src="assets/logo.png" alt="btape logo" width="480">
+</p>
+
 `btape` is a small, VHS-inspired Ruby CLI that runs browser actions from a
 `.tape` file and records them as an animated GIF. Ferrum controls Chromium
 and captures PNG frames, and a pure-Ruby encoder produces the GIF. It
