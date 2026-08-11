@@ -1,5 +1,3 @@
-require "coelacanth"
-
 module Btape
   class Recorder
     def initialize(page, directory, interval: 0.1)
@@ -45,16 +43,8 @@ module Btape
       end
     end
 
-    # Coelacanth versions expose either a module capture API or a capturer
-    # object. Supporting both keeps btape usable while its young API settles.
     def screenshot(path)
-      if Coelacanth.respond_to?(:capture)
-        Coelacanth.capture(@page, path)
-      elsif defined?(Coelacanth::Screenshot)
-        Coelacanth::Screenshot.new(@page).capture(path)
-      else
-        raise Error, "this coelacanth version has no supported screenshot API"
-      end
+      @page.screenshot(path: path)
     end
   end
 end

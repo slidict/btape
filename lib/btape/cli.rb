@@ -14,7 +14,7 @@ module Btape
       output = @runner.run(commands, base_directory: File.dirname(script))
       @out.puts "Created #{output}"
       0
-    rescue Error, Errno::ENOENT => e
+    rescue Error, SystemCallError => e
       @err.puts "btape: #{e.message}"
       1
     end

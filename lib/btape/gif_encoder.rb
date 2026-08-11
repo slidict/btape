@@ -12,8 +12,8 @@ module Btape
       raise Error, "no screenshots were captured" if png_paths.empty?
 
       images = png_paths.map { |path| ChunkyPNG::Image.from_file(path) }
-      width, height = images.first.dimension
-      raise Error, "captured screenshots have different dimensions" unless images.all? { |image| image.dimension == [width, height] }
+      width, height = images.first.dimension.to_a
+      raise Error, "captured screenshots have different dimensions" unless images.all? { |image| image.dimension.to_a == [width, height] }
 
       File.binwrite(output, gif(images, width, height))
     end
@@ -39,28 +39,67 @@ module Btape
       (0..255).map { |i| [((i >> 5) & 7) * 255 / 7, ((i >> 2) & 7) * 255 / 7, (i & 3) * 255 / 3].pack("C3") }.join.b
     end
 
+    CLEAR_CODE = 256
+    FINISH_CODE = 257
+    MAX_CODE_WIDTH = 12
+    MAX_DICTIONARY_SIZE = 1 << MAX_CODE_WIDTH
+
     def lzw(image)
-      clear = 256
-      finish = 257
+      pixels = image.pixels.map { |pixel| rgb332(pixel) }
       codes = []
-      # Clearing between pixels is less compact, but keeps the code width fixed
-      # and makes this tiny encoder predictable for an MVP.
-      image.pixels.each do |pixel|
-        codes << clear << rgb332(pixel)
+      code_width = 9
+      next_code = FINISH_CODE + 1
+      dictionary = root_dictionary
+
+      emit = ->(code) { codes << [code, code_width] }
+      emit.call(CLEAR_CODE)
+
+      if pixels.empty?
+        emit.call(FINISH_CODE)
+        return pack_codes(codes)
       end
-      codes << finish
-      pack_codes(codes, 9)
+
+      current = [pixels.first]
+      pixels.drop(1).each do |pixel|
+        candidate = current + [pixel]
+        if dictionary.key?(candidate)
+          current = candidate
+          next
+        end
+
+        emit.call(dictionary[current])
+
+        if next_code == MAX_DICTIONARY_SIZE
+          emit.call(CLEAR_CODE)
+          dictionary = root_dictionary
+          next_code = FINISH_CODE + 1
+          code_width = 9
+        else
+          dictionary[candidate] = next_code
+          next_code += 1
+          code_width += 1 if next_code > (1 << code_width) - 1 && code_width < MAX_CODE_WIDTH
+        end
+
+        current = [pixel]
+      end
+      emit.call(dictionary[current])
+      emit.call(FINISH_CODE)
+      pack_codes(codes)
+    end
+
+    def root_dictionary
+      (0..255).to_h { |value| [[value], value] }
     end
 
     def rgb332(pixel)
       (ChunkyPNG::Color.r(pixel) & 0xe0) | ((ChunkyPNG::Color.g(pixel) & 0xe0) >> 3) | (ChunkyPNG::Color.b(pixel) >> 6)
     end
 
-    def pack_codes(codes, bits)
+    def pack_codes(codes)
       buffer = 0
       count = 0
       output = +"".b
-      codes.each do |code|
+      codes.each do |code, bits|
         buffer |= code << count
         count += bits
         while count >= 8
@@ -69,7 +108,7 @@ module Btape
           count -= 8
         end
       end
-      output << buffer.chr if count.positive?
+      output << (buffer & 0xff).chr if count.positive?
       output
     end
   end

@@ -22,15 +22,21 @@ module Btape
       FileUtils.mkdir_p(File.dirname(output_path))
 
       Dir.mktmpdir("btape-") do |directory|
-        browser = @browser_factory.call(window_size: [width, height], browser_options: { "no-sandbox": nil })
-        recorder = @recorder_class.new(browser, directory)
+        browser = nil
+        recorder = nil
         begin
+          browser = @browser_factory.call(window_size: [width, height])
+          recorder = @recorder_class.new(browser, directory)
           recorder.start
           execute(commands, browser)
           recorder.stop
           @gif_encoder.write(recorder.paths, output_path)
         ensure
-          recorder&.stop
+          begin
+            recorder&.stop
+          rescue StandardError
+            nil
+          end
           browser&.quit
         end
       end
@@ -63,8 +69,10 @@ module Btape
     end
 
     def xpath_literal(text)
-      return text.inspect unless text.include?('"')
-      "concat(#{text.split('"', -1).map(&:inspect).join(%q{, '"', })})"
+      return %("#{text}") unless text.include?('"')
+
+      parts = text.split('"', -1).map { |part| %("#{part}") }
+      "concat(#{parts.join(%q{, '"', })})"
     end
 
     def sleep_seconds(duration)
