@@ -10,7 +10,11 @@ module Btape
       @runner = runner
     end
 
+    HELP_COMMANDS = ['Output PATH', 'Viewport WIDTHxHEIGHT', 'Goto URL', 'Click SELECTOR',
+                     'Type SELECTOR TEXT', 'Sleep DURATION'].freeze
+
     def run(argv)
+      return print_help if argv.empty? || %w[help -h --help].include?(argv.first)
       raise Error, 'usage: btape SCRIPT.tape' unless argv.length == 1
 
       script = File.expand_path(argv.first)
@@ -21,6 +25,16 @@ module Btape
     rescue Error, SystemCallError => e
       @err.puts "btape: #{e.message}"
       1
+    end
+
+    private
+
+    def print_help
+      @out.puts 'Usage: btape SCRIPT.tape'
+      @out.puts
+      @out.puts 'Commands:'
+      HELP_COMMANDS.each { |command| @out.puts "  #{command}" }
+      0
     end
   end
 end

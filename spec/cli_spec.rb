@@ -28,4 +28,22 @@ RSpec.describe Btape::CLI do
       expect(output.string).to include('Created')
     end
   end
+
+  it 'prints help and lists commands when given no arguments' do
+    output = StringIO.new
+
+    status = described_class.new(out: output, err: StringIO.new).run([])
+
+    expect(status).to eq(0)
+    expect(output.string).to match(/^Commands:$/)
+  end
+
+  it 'prints help for the help command' do
+    output = StringIO.new
+
+    status = described_class.new(out: output, err: StringIO.new).run(['help'])
+
+    expect(status).to eq(0)
+    expect(output.string).to match(/^Commands:$/)
+  end
 end
