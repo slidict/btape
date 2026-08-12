@@ -28,4 +28,41 @@ RSpec.describe Btape::Parser do
     expect { described_class.new.parse("Sleep tomorrow\n") }
       .to raise_error(Btape::ScriptError, /line 1: Sleep duration/)
   end
+
+  it 'parses Set lines' do
+    commands = described_class.new.parse("Set CaptureMode manual\n")
+
+    expect(commands.first.arguments).to eq(%w[CaptureMode manual])
+  end
+
+  it 'rejects an unknown setting with its line number' do
+    expect { described_class.new.parse("Output demo.gif\nSet Sparkles yes\n") }
+      .to raise_error(Btape::ScriptError, 'line 2: unknown setting "Sparkles"')
+  end
+
+  it 'accepts Screenshot with and without a name' do
+    commands = described_class.new.parse("Screenshot\nScreenshot cover\n")
+
+    expect(commands.map(&:arguments)).to eq([[], ['cover']])
+  end
+
+  it 'rejects a Screenshot name that could escape the frames directory' do
+    expect { described_class.new.parse("Screenshot ../etc/passwd\n") }
+      .to raise_error(Btape::ScriptError, /line 1: Screenshot name/)
+  end
+
+  it 'rejects a Press count that is not a positive integer' do
+    expect { described_class.new.parse("Press Right twice\n") }
+      .to raise_error(Btape::ScriptError, 'line 1: Press count must be a positive integer')
+  end
+
+  it 'rejects a wait timeout that is not a duration' do
+    expect { described_class.new.parse("WaitForJS window.READY 10\n") }
+      .to raise_error(Btape::ScriptError, /line 1: WaitForJS timeout/)
+  end
+
+  it 'reports the wrong number of arguments' do
+    expect { described_class.new.parse("Set CaptureMode\n") }
+      .to raise_error(Btape::ScriptError, 'line 1: Set expects 2 argument(s), got 1')
+  end
 end

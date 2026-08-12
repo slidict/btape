@@ -2,60 +2,121 @@
 
 require 'chunky_png'
 require_relative 'lzw_compressor'
+require_relative 'palette'
 
 module Btape
-  # A deliberately small GIF89a encoder. RGB332 gives a fixed 256-colour palette,
-  # avoiding a native image or video dependency.
+  # A deliberately small GIF89a encoder, so that recording needs no native
+  # image or video dependency.
   class GifEncoder
-    def initialize(delay: 10)
-      @delay = delay
+    # A GIF frame delay is two bytes of hundredths of a second.
+    MAX_DELAY = 0xffff
+    # Eight bits per pixel: one index into a 256-colour table.
+    MIN_CODE_SIZE = "\x08"
+
+    def self.for(settings)
+      new(
+        delay: (settings.frame_delay * 100).round,
+        loop_count: settings.loop_count,
+        quantizer: settings.quantizer,
+        scale: settings.scale,
+        width: settings.output_width
+      )
+    end
+
+    def initialize(delay: 10, loop_count: 0, quantizer: :adaptive, scale: 1.0, width: nil, dedupe: true)
+      @delay = delay.clamp(1, MAX_DELAY)
+      @loop_count = loop_count
+      @quantizer = quantizer
+      @scale = scale
+      @width = width
+      @dedupe = dedupe
       @compressor = LzwCompressor.new
     end
 
-    def write(png_paths, output)
-      raise Error, 'no screenshots were captured' if png_paths.empty?
+    # Returns the GIF as a binary String. Frames are PNG paths or ChunkyPNG
+    # canvases. Callers that are not writing to the filesystem — attaching the
+    # GIF to a record, say — want this rather than a file to read back.
+    def encode(frames)
+      raise Error, 'no screenshots were captured' if frames.empty?
 
-      images = png_paths.map { |path| ChunkyPNG::Image.from_file(path) }
+      images = frames.map { |frame| resize(image(frame)) }
       width, height = images.first.dimension.to_a
       raise Error, 'captured screenshots have different dimensions' unless images.all? do |image|
         image.dimension.to_a == [width, height]
       end
 
-      File.binwrite(output, gif(images, width, height))
+      palette = Palette.build(@quantizer, images)
+      gif(collapse(images.map { |image| index(image, palette) }), width, height, palette)
+    end
+
+    # Writes to a path, or to anything that responds to write.
+    def write(frames, output)
+      data = encode(frames)
+      return output.write(data) if output.respond_to?(:write)
+
+      File.binwrite(output, data)
     end
 
     private
 
-    def gif(images, width, height)
+    def image(frame)
+      frame.is_a?(ChunkyPNG::Canvas) ? frame : ChunkyPNG::Image.from_file(frame)
+    end
+
+    def resize(image)
+      target = @width || (image.width * @scale).round
+      return image if target == image.width || target < 1
+
+      # A wide enough source rounds its scaled height down to nothing, and a
+      # zero-height canvas becomes a GIF no decoder can show.
+      height = [(image.height * target.to_f / image.width).round, 1].max
+      image.resample_bilinear(target, height)
+    end
+
+    def index(image, palette)
+      image.pixels.map { |pixel| palette.index_for(pixel) }
+    end
+
+    # A run that sits on one page for a second is a dozen identical frames.
+    # Holding the first for longer says the same thing in a fraction of the
+    # bytes, and spares a decoder the redundant frames.
+    def collapse(frames)
+      frames.each_with_object([]) do |pixels, collapsed|
+        previous = collapsed.last
+        if @dedupe && previous && previous.first == pixels
+          previous[1] = [previous[1] + @delay, MAX_DELAY].min
+        else
+          collapsed << [pixels, @delay]
+        end
+      end
+    end
+
+    def gif(frames, width, height, palette)
       data = +'GIF89a'.b
-      data << [width, height, 0b11110111, 0, 0].pack('vvCCC') << palette
-      data << "!\xFF\x0BNETSCAPE2.0\x03\x01\x00\x00\x00".b
-      images.each { |image| write_frame(data, image, width, height) }
+      data << [width, height, 0b11110111, 0, 0].pack('vvCCC') << palette.to_gct
+      data << netscape
+      frames.each { |pixels, delay| write_frame(data, pixels, delay, width, height) }
       data << ';'.b
     end
 
-    def write_frame(data, image, width, height)
-      data << "!\xF9\x04\x00".b << [@delay].pack('v') << "\x00\x00".b
+    # The application extension that carries the loop count. Zero loops
+    # forever, which is what an unattended recording usually wants.
+    def netscape
+      +"!\xFF\x0BNETSCAPE2.0\x03\x01".b << [@loop_count].pack('v') << "\x00".b
+    end
+
+    def write_frame(data, pixels, delay, width, height)
+      data << "!\xF9\x04\x00".b << [delay].pack('v') << "\x00\x00".b
       data << ','.b << [0, 0, width, height, 0].pack('vvvvC')
-      compressed = lzw(image)
-      data << "\x08".b
-      compressed.bytes.each_slice(255) { |slice| data << slice.length.chr << slice.pack('C*') }
+      data << MIN_CODE_SIZE.b
+      lzw(pixels).bytes.each_slice(255) { |slice| data << slice.length.chr << slice.pack('C*') }
       data << "\x00".b
     end
 
-    def palette
-      (0..255).map { |i| [((i >> 5) & 7) * 255 / 7, ((i >> 2) & 7) * 255 / 7, (i & 3) * 255 / 3].pack('C3') }.join.b
-    end
-
-    def lzw(image)
-      pixels = image.pixels.map { |pixel| rgb332(pixel) }
+    def lzw(pixels)
       codes = []
       @compressor.call(pixels) { |code, width| codes << [code, width] }
       pack_codes(codes)
-    end
-
-    def rgb332(pixel)
-      (ChunkyPNG::Color.r(pixel) & 0xe0) | ((ChunkyPNG::Color.g(pixel) & 0xe0) >> 3) | (ChunkyPNG::Color.b(pixel) >> 6)
     end
 
     def pack_codes(codes)

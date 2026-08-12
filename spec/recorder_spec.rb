@@ -87,10 +87,115 @@ RSpec.describe Btape::Recorder do
     expect { recorder.stop }.to raise_error('boom')
   end
 
+  it 'hands each captured frame to on_frame with its index' do
+    seen = []
+    recorder = described_class.new(page, directory, interval: 60, on_frame: ->(path, index) { seen << [path, index] })
+
+    recorder.start
+    recorder.stop
+
+    expect(seen).to eq(
+      [[File.join(directory, 'frame-000000.png'), 0], [File.join(directory, 'frame-000001.png'), 1]]
+    )
+  end
+
   it 'does nothing when stopped without ever being started' do
     recorder = described_class.new(page, directory, interval: 60)
 
     expect { recorder.stop }.not_to raise_error
     expect(page.screenshots).to be_empty
+  end
+
+  describe 'manual mode' do
+    # The point of manual mode is that nothing is captured behind the
+    # script's back, so a 20-page deck yields 20 frames and not 600.
+    it 'captures nothing on start or stop' do
+      recorder = described_class.new(page, directory, interval: 0.01, mode: :manual)
+
+      recorder.start
+      recorder.stop
+
+      expect(page.screenshots).to be_empty
+    end
+
+    it 'captures only when the script asks' do
+      recorder = described_class.new(page, directory, interval: 0.01, mode: :manual)
+
+      recorder.start
+      recorder.capture
+      recorder.capture
+      recorder.stop
+
+      expect(recorder.paths.length).to eq(2)
+    end
+  end
+
+  # A page that hangs would otherwise be screenshotted until the disk ran out.
+  it 'stops once it has captured MaxFrames' do
+    recorder = described_class.new(page, directory, mode: :manual, max_frames: 2)
+
+    recorder.capture
+    recorder.capture
+
+    expect { recorder.capture }.to raise_error(Btape::Error, /stopped after 2 frames/)
+  end
+
+  it 'reports the frame limit reached on the background thread when stopped' do
+    recorder = described_class.new(page, directory, interval: 0.001, max_frames: 3)
+
+    recorder.start
+    wait_for_captures(page.captures, 3)
+
+    expect { recorder.stop }.to raise_error(Btape::Error, /stopped after 3 frames/)
+  end
+
+  it 'stops only once, so unwinding twice is harmless' do
+    recorder = described_class.new(page, directory, interval: 60)
+
+    recorder.start
+    recorder.stop
+    recorder.stop
+
+    expect(page.screenshots.length).to eq(2)
+  end
+
+  it 'takes the lock it shares with the executor while capturing' do
+    lock = Monitor.new
+    held = nil
+    # Named rather than an anonymous `**`, which needs Ruby 3.2 and the gem
+    # supports 3.1.
+    page.define_singleton_method(:screenshot) { |**_options| held = lock.mon_owned? }
+    recorder = described_class.new(page, directory, mode: :manual, lock: lock)
+
+    recorder.capture
+
+    expect(held).to be true
+  end
+
+  it 'gives a named frame a predictable path and records it by name' do
+    recorder = described_class.new(page, directory, mode: :manual)
+
+    path = recorder.capture(name: 'page-01')
+
+    expect(path).to eq(File.join(directory, 'frame-page-01.png'))
+    expect(recorder.named_paths).to eq('page-01' => path)
+  end
+
+  it 'refuses a frame name that would leave the frames directory' do
+    recorder = described_class.new(page, directory, mode: :manual)
+
+    expect { recorder.capture(name: 'foo/../../secrets') }
+      .to raise_error(Btape::Error, /frame name must be letters/)
+    expect(recorder.paths).to be_empty
+  end
+
+  it 'keeps numbering unnamed frames sequentially around named ones' do
+    recorder = described_class.new(page, directory, mode: :manual)
+
+    recorder.capture
+    recorder.capture(name: 'cover')
+    recorder.capture
+
+    expect(recorder.paths.last).to eq(File.join(directory, 'frame-000002.png'))
   end
 end
