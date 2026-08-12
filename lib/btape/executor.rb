@@ -39,6 +39,12 @@ module Btape
       commands.each do |command|
         @logger.debug("btape: line #{command.line_number}: #{command.name}")
         perform(command)
+      # The run's own deadline arrives asynchronously and usually lands inside
+      # a command, which would otherwise be reported as that command failing.
+      # A caller has to be able to tell "the run outlasted Set Timeout" from
+      # "this line is broken", so it goes out as it came in.
+      rescue TimeoutError
+        raise
       rescue StandardError => e
         raise ScriptError.new(command.line_number, "#{command.name} failed: #{e.message}")
       end
@@ -76,7 +82,10 @@ module Btape
     def frame(selector)
       return @target = @browser if selector == MAIN_FRAME
 
-      @target = find(selector).frame || raise("#{selector} is not a frame")
+      # Reading .frame off the node is a further exchange with the browser, so
+      # it belongs under the lock as much as the lookup that found the node.
+      node = find(selector)
+      @target = locked { node.frame } || raise("#{selector} is not a frame")
     end
 
     def press(key, count = '1')

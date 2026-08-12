@@ -453,7 +453,7 @@ RSpec.describe Btape::Runner do
       ]
 
       expect { runner.run(commands, base_directory: directory) }
-        .to raise_error(Btape::ScriptError, /run timed out after 0.01s/)
+        .to raise_error(Btape::TimeoutError, /run timed out after 0.01s/)
       expect(browser.quit_called?).to be true
     end
   end

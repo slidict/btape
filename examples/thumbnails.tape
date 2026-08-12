@@ -20,7 +20,10 @@ Set FrameDelay 1.5s
 Set WaitStable 5
 Set WaitTimeout 15s
 
-Goto http://localhost:3000/decks/1
+# The browser resolves this URL, not btape, so a remote browser needs a host
+# it can reach: `localhost` there means the browser's own container. Against a
+# local browser, `http://localhost:3000/decks/1` is the same page.
+Goto http://app:3000/decks/1
 
 # The deck renders inside an iframe, so reach into it for both the readiness
 # flag and the navigation.

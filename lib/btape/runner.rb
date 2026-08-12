@@ -13,6 +13,12 @@ module Btape
   class Runner
     DEFAULT_VIEWPORT = [1280, 720].freeze
 
+    # How long unwinding gets. Set Timeout bounds the run, but the thing that
+    # usually trips it is a wedged browser, and both stopping the recorder and
+    # quitting the browser then talk to it — so without a deadline of their
+    # own they would hang the process after the timeout had already fired.
+    CLEANUP_TIMEOUT = 10
+
     # Everything one run threads through recording, kept in one object rather
     # than a parameter list that grows with each new command.
     Context = Struct.new(:commands, :directory, :settings, :geometry, :sink, :output_path, :on_frame, :keep_frames,
@@ -93,11 +99,14 @@ module Btape
           recorder.start
           execute(context, browser, recorder, lock)
           recorder.stop
-          encoder(context.settings).write(recorder.paths, context.sink)
-          result(context, recorder)
         end
+        # Outside the deadline: it is there to bound the browser session, and
+        # interrupting a write part-way through would leave a truncated GIF at
+        # the output path that nothing downstream could tell from a whole one.
+        encoder(context.settings).write(recorder.paths, context.sink)
+        result(context, recorder)
       ensure
-        unwind(recorder, browser)
+        cleanup(recorder, browser)
       end
     end
 
@@ -111,6 +120,15 @@ module Btape
       Executor.new(
         browser: browser, recorder: recorder, settings: context.settings, lock: lock, logger: @logger
       ).call(context.commands)
+    end
+
+    # Giving up on the cleanup is not a failure worth raising: the run has
+    # already produced its answer, or its exception, and this is only the
+    # tidying afterwards.
+    def cleanup(recorder, browser)
+      Timeout.timeout(CLEANUP_TIMEOUT) { unwind(recorder, browser) }
+    rescue Timeout::Error
+      @logger.warn("btape: cleanup did not finish within #{CLEANUP_TIMEOUT}s")
     end
 
     # stop and quit are reached again here after they have already run, which

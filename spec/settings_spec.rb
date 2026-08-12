@@ -73,4 +73,13 @@ RSpec.describe Btape::Settings do
   it 'allows Loop to be zero, meaning forever' do
     expect(described_class.validate!('Loop', '0')).to eq([:loop_count, 0])
   end
+
+  it 'reads a string keyed override that is not a String' do
+    expect(described_class.new.merge('Loop' => 3).loop_count).to eq(3)
+  end
+
+  it 'reports a string keyed override of the wrong type as a setting error' do
+    expect { described_class.new.merge('WsUrl' => 3000) }
+      .to raise_error(Btape::Error, %r{must start with ws://})
+  end
 end

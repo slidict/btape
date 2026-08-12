@@ -162,7 +162,9 @@ RSpec.describe Btape::Recorder do
   it 'takes the lock it shares with the executor while capturing' do
     lock = Monitor.new
     held = nil
-    page.define_singleton_method(:screenshot) { |**| held = lock.mon_owned? }
+    # Named rather than an anonymous `**`, which needs Ruby 3.2 and the gem
+    # supports 3.1.
+    page.define_singleton_method(:screenshot) { |**_options| held = lock.mon_owned? }
     recorder = described_class.new(page, directory, mode: :manual, lock: lock)
 
     recorder.capture
@@ -177,6 +179,14 @@ RSpec.describe Btape::Recorder do
 
     expect(path).to eq(File.join(directory, 'frame-page-01.png'))
     expect(recorder.named_paths).to eq('page-01' => path)
+  end
+
+  it 'refuses a frame name that would leave the frames directory' do
+    recorder = described_class.new(page, directory, mode: :manual)
+
+    expect { recorder.capture(name: 'foo/../../secrets') }
+      .to raise_error(Btape::Error, /frame name must be letters/)
+    expect(recorder.paths).to be_empty
   end
 
   it 'keeps numbering unnamed frames sequentially around named ones' do

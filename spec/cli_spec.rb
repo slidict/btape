@@ -69,6 +69,12 @@ RSpec.describe Btape::CLI do
     end
   end
 
+  it 'prefers --set WsUrl over BTAPE_WS_URL' do
+    run_tape(argv_prefix: ['--set', 'WsUrl=ws://from-set:3000'], env: { 'BTAPE_WS_URL' => 'ws://from-env:3000' }) do |runner:, **| # rubocop:disable Layout/LineLength
+      expect(Btape::Settings.new.merge(runner.settings).ws_url).to eq('ws://from-set:3000')
+    end
+  end
+
   it 'passes --set through by its script name' do
     run_tape(argv_prefix: ['--set', 'CaptureMode=manual']) do |runner:, **|
       expect(runner.settings['CaptureMode']).to eq('manual')

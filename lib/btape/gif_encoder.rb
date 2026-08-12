@@ -67,7 +67,10 @@ module Btape
       target = @width || (image.width * @scale).round
       return image if target == image.width || target < 1
 
-      image.resample_bilinear(target, (image.height * target.to_f / image.width).round)
+      # A wide enough source rounds its scaled height down to nothing, and a
+      # zero-height canvas becomes a GIF no decoder can show.
+      height = [(image.height * target.to_f / image.width).round, 1].max
+      image.resample_bilinear(target, height)
     end
 
     def index(image, palette)

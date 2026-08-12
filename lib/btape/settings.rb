@@ -83,21 +83,29 @@ module Btape
         Duration.parse(value)
       end
 
+      # A String key means the value has not been coerced yet, but nothing
+      # says it arrived as a String: `merge('Loop' => 3)` is a reasonable
+      # thing for a caller to write. These read it as the text a Set line
+      # would have carried, so a value of the wrong type fails validation
+      # rather than raising TypeError past the ArgumentError rescue.
       def url(value, name)
-        return value if URL_SCHEMES.any? { |scheme| value.start_with?(scheme) }
+        text = value.to_s
+        return text if URL_SCHEMES.any? { |scheme| text.start_with?(scheme) }
 
         raise ArgumentError, "Set #{name} must start with #{URL_SCHEMES.join(', ')}"
       end
 
       def integer(value, name, minimum:)
-        number = Integer(value, 10) if /\A\d+\z/.match?(value)
+        text = value.to_s
+        number = Integer(text, 10) if /\A\d+\z/.match?(text)
         raise ArgumentError, "Set #{name} must be an integer of at least #{minimum}" if number.nil? || number < minimum
 
         number
       end
 
       def positive_float(value, name)
-        number = Float(value) if /\A\d+(?:\.\d+)?\z/.match?(value)
+        text = value.to_s
+        number = Float(text) if /\A\d+(?:\.\d+)?\z/.match?(text)
         raise ArgumentError, "Set #{name} must be a positive number" unless number&.positive?
 
         number

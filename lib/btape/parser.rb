@@ -2,6 +2,7 @@
 
 require 'shellwords'
 require_relative 'duration'
+require_relative 'recorder'
 require_relative 'settings'
 
 module Btape
@@ -17,8 +18,6 @@ module Btape
       'Set' => 2, 'Screenshot' => 0..1, 'Evaluate' => 1, 'WaitFor' => 1..2, 'WaitForJS' => 1..2,
       'Frame' => 1, 'Press' => 1..2
     }.freeze
-
-    FRAME_NAME = /\A[\w.-]+\z/
 
     def parse(source)
       source.each_line.with_index(1).filter_map do |line, number|
@@ -72,9 +71,10 @@ module Btape
     end
 
     # The name becomes part of a filename, so keep it to something that
-    # cannot escape the frames directory.
+    # cannot escape the frames directory. Recorder rejects the same names, but
+    # catching it here names the line the script has to fix.
     def validate_frame_name(value, number)
-      return if value.nil? || FRAME_NAME.match?(value)
+      return if value.nil? || Recorder::FRAME_NAME.match?(value)
 
       raise ScriptError.new(number, 'Screenshot name must be letters, numbers, dashes, dots or underscores')
     end
