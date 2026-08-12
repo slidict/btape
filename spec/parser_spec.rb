@@ -65,4 +65,21 @@ RSpec.describe Btape::Parser do
     expect { described_class.new.parse("Set CaptureMode\n") }
       .to raise_error(Btape::ScriptError, 'line 1: Set expects 2 argument(s), got 1')
   end
+
+  # Help and the prompt a model is given both quote SIGNATURES, so a command
+  # added to ARITY and nowhere else would be a command nobody is told about.
+  it 'describes every command it accepts, and no others' do
+    expect(described_class::SIGNATURES.keys).to match_array(described_class::ARITY.keys)
+  end
+
+  # The optional arguments a signature shows in brackets are the ones the
+  # arity lets a script leave out.
+  it 'brackets exactly the arguments that are optional' do
+    described_class::SIGNATURES.each do |name, signature|
+      optional = signature.scan(/\[[^\]]+\]/).length
+      arity = described_class::ARITY.fetch(name)
+
+      expect(optional).to eq(arity.is_a?(Range) ? arity.max - arity.min : 0), "#{name} #{signature}"
+    end
+  end
 end
