@@ -2,6 +2,8 @@
 
 require 'logger'
 require 'optparse'
+require_relative 'generate_command'
+require_relative 'parser'
 
 module Btape
   # Entry point invoked by the `btape` executable: parses argv, runs the
@@ -11,23 +13,24 @@ module Btape
 
     USAGE = 'Usage: btape [options] SCRIPT.tape'
     HELP_ARGUMENTS = %w[help -h --help].freeze
-    HELP_COMMANDS = ['Output PATH', 'Viewport WIDTHxHEIGHT', 'Goto URL', 'Click SELECTOR',
-                     'Type SELECTOR TEXT', 'Sleep DURATION', 'Set NAME VALUE', 'Screenshot [NAME]',
-                     'Evaluate JAVASCRIPT', 'WaitFor SELECTOR [TIMEOUT]',
-                     'WaitForJS JAVASCRIPT [TIMEOUT]', 'Frame SELECTOR|main',
-                     'Press KEY [COUNT]'].freeze
+    HELP_COMMANDS = Parser::SIGNATURES.map { |name, arguments| "#{name} #{arguments}".strip }.freeze
+    GENERATE = 'generate'
     # The two ways a flag can name a browser: --ws-url and --set WsUrl=.
     WS_URL_KEYS = [:ws_url, 'WsUrl'].freeze
 
     # The runner is built after the flags are read, so that --verbose can
     # reach it. Pass one to use it as given.
-    def initialize(out: $stdout, err: $stderr, runner: nil)
+    def initialize(out: $stdout, err: $stderr, stdin: $stdin, runner: nil, generator: nil)
       @out = out
       @err = err
+      @stdin = stdin
       @runner = runner
+      @generator = generator
     end
 
     def run(argv)
+      return generate(argv.drop(1)) if argv.first == GENERATE
+
       options = Options.new(false, {}, nil, false)
       arguments = parse_options(argv, options)
       return print_help if options.help || arguments.empty? || HELP_ARGUMENTS.include?(arguments.first)
@@ -41,6 +44,10 @@ module Btape
     end
 
     private
+
+    def generate(argv)
+      GenerateCommand.new(out: @out, err: @err, stdin: @stdin, generator: @generator).run(argv)
+    end
 
     def record(argument, options)
       script = File.expand_path(argument)
@@ -127,6 +134,9 @@ module Btape
       @out.puts '  --set NAME=VALUE Override a setting, as a Set line would'
       @out.puts '  --frames-dir DIR Write the PNG frames here and keep them'
       @out.puts '  --verbose        Report each command on stderr as it runs'
+      @out.puts
+      @out.puts 'Subcommands:'
+      @out.puts '  generate DESCRIPTION  Write a tape by asking a local model; btape generate --help'
       @out.puts
       @out.puts 'Commands:'
       HELP_COMMANDS.each { |command| @out.puts "  #{command}" }

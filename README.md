@@ -9,6 +9,11 @@
 and captures PNG frames, and a pure-Ruby encoder produces the GIF. It
 does not require Playwright, Selenium, ffmpeg, or an external service.
 
+Tapes are written by hand, or asked of a language model running on the same
+machine: `btape generate` describes the language to LM Studio, Ollama or
+anything else speaking their API, and holds the answer to the parser before
+handing it over.
+
 ## Commands
 
 ```text
@@ -88,6 +93,9 @@ Usage: btape [options] SCRIPT.tape
   --set NAME=VALUE Override a setting, as a Set line would
   --frames-dir DIR Write the PNG frames here and keep them
   --verbose        Report each command on stderr as it runs
+
+Subcommands:
+  generate DESCRIPTION  Write a tape by asking a local model; btape generate --help
 ```
 
 `BTAPE_WS_URL` is used when neither `--ws-url` nor `--set WsUrl=` is given.
@@ -182,6 +190,77 @@ unwinds. `--frames-dir` keeps them:
 btape --frames-dir frames examples/thumbnails.tape
 ```
 
+## Writing a tape with a local model
+
+`btape generate` describes the language to a model running on your own
+machine and asks it for a tape:
+
+```sh
+btape generate "record signing in at localhost:3000 and landing on the dashboard" -o signin.tape
+btape signin.tape
+```
+
+The default is `http://localhost:1234/v1`, which is where LM Studio serves.
+Anything else speaking the same API answers just as well — Ollama on
+`http://localhost:11434/v1`, llama.cpp's server, vLLM — so nothing about the
+description or the page being recorded leaves the machine unless you point
+`--llm-url` somewhere that it does.
+
+```text
+Usage: btape generate [options] DESCRIPTION
+
+  --llm-url URL    The OpenAI-compatible model server to ask
+  --model NAME     Ask for this model rather than whichever one is loaded
+  --temperature N  How freely the model writes; 0.2 by default
+  --context FILE   Give the model this file as context: selectors, notes, markup
+  -o, --out FILE   Write the tape here rather than to standard output
+  --verbose        Report each attempt on stderr
+```
+
+`BTAPE_LLM_URL`, `BTAPE_LLM_MODEL` and `BTAPE_LLM_KEY` stand in for the first
+two flags and for a key, which a local server rarely wants and a proxy in
+front of one usually does. With no model named, the server is asked which one
+it has loaded — the name a download was given is not worth remembering.
+
+The description can be piped in rather than quoted, which is easier for
+anything longer than a line:
+
+```sh
+btape generate --context app/views/sessions/new.html.erb < what-to-record.txt
+```
+
+What comes back is parsed before you see it, and a tape that does not parse
+goes back to the model with the parser's own complaint — `line 4: unknown
+command "Navigate"` — for it to fix, up to three times. That loop is why this
+is worth more than pasting the command list into a chat window: a small model
+reliably invents a command or drops a quote, and just as reliably repairs it
+when told which line. What it cannot know is your markup, so a tape it wrote
+still names selectors that have to be checked against the page. Read it before
+you run it, the way you would read anything else generated for you.
+
+### A model that is not on this machine
+
+`--llm-url` is the whole of the configuration, so a hosted endpoint speaking
+the same API works as well as a local one. Name the model rather than leaving
+it to be discovered: these servers answer `/v1/models` with a catalogue rather
+than with the one thing they have loaded, and the first entry of it is not
+necessarily something that holds a conversation.
+
+```sh
+BTAPE_LLM_KEY=sk-... btape generate --llm-url https://api.openai.com/v1 --model gpt-4.1 "record signing in"
+```
+
+Anthropic serves an OpenAI-compatible layer on the same host as its own API,
+so `--llm-url https://api.anthropic.com/v1 --model claude-opus-5` records too.
+It is meant for trying models rather than for living on, but nothing btape
+asks of it is among the parts that are missing. A model that refuses
+`--temperature` at anything but its default wants `--temperature 1`.
+
+Sending the work somewhere else is the thing to weigh, not the flag. A local
+model keeps the description and the `--context` file on the machine that ran
+the command; a hosted one is handed both, and a context file is usually a page
+of your own markup rather than something you would have published.
+
 ## From Ruby
 
 `Runner#run` returns a `Btape::Result`:
@@ -219,6 +298,16 @@ or use the encoder on its own, with PNG paths or ChunkyPNG images:
 
 ```ruby
 Btape::GifEncoder.new(delay: 150, width: 640).encode(frame_paths) # => String
+```
+
+The generator is a plain object too, so an application that already knows what
+it wants recorded can go from a sentence to a GIF without a file in between:
+
+```ruby
+generator = Btape::LLM::Generator.new(client: Btape::LLM::Client.new(base_url: ENV['BTAPE_LLM_URL']))
+tape = generator.call('record the dashboard loading', context: page_markup)
+
+Btape::Runner.new.run(Btape::Parser.new.parse(tape), base_directory: '.', output: buffer)
 ```
 
 ## Container development with dip or wip

@@ -19,6 +19,17 @@ module Btape
       'Frame' => 1, 'Press' => 1..2
     }.freeze
 
+    # The same commands as they read to somebody being told about them, which
+    # is what `btape help` prints and what a model is handed before it is
+    # asked for a tape. ARITY is what a script is held to; a spec keeps the
+    # two lists from drifting apart.
+    SIGNATURES = {
+      'Output' => 'PATH', 'Viewport' => 'WIDTHxHEIGHT', 'Goto' => 'URL', 'Click' => 'SELECTOR',
+      'Type' => 'SELECTOR TEXT', 'Press' => 'KEY [COUNT]', 'Frame' => 'SELECTOR|main',
+      'Evaluate' => 'JAVASCRIPT', 'WaitFor' => 'SELECTOR [TIMEOUT]', 'WaitForJS' => 'JAVASCRIPT [TIMEOUT]',
+      'Screenshot' => '[NAME]', 'Sleep' => 'DURATION', 'Set' => 'NAME VALUE'
+    }.freeze
+
     def parse(source)
       source.each_line.with_index(1).filter_map do |line, number|
         text = line.strip
