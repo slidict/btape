@@ -92,6 +92,72 @@ Usage: btape [options] SCRIPT.tape
 
 `BTAPE_WS_URL` is used when neither `--ws-url` nor `--set WsUrl=` is given.
 
+### Fonts, and text that is not Latin
+
+Glyphs come from the fonts the browser can see, which is not necessarily the
+machine btape runs on: the host when btape launches Chromium itself, the other
+machine when `Set WsUrl` points at one, and the image when either of those is
+a container. Nothing raises when a script has no coverage — the page records as
+rows of tofu boxes instead — so a font missing from a headless image shows up
+in the GIF and nowhere earlier.
+
+Install fonts covering the scripts the tapes visit. On Debian or Ubuntu:
+
+```sh
+apt-get install fonts-noto-core                # most scripts, Latin included
+apt-get install fonts-noto-cjk                 # Chinese, Japanese, Korean
+apt-get install fonts-ipafont fonts-ipaexfont  # Japanese, as IPAGothic, IPAexGothic, IPAMincho
+```
+
+Fontconfig reads `/usr/share/fonts`, `/usr/local/share/fonts`,
+`~/.local/share/fonts` and `~/.fonts`, and font files copied in by hand need
+an `fc-cache -f` after them. The home directory in that list is the one
+belonging to whoever launches the browser, which under a service manager is
+often not the user who installed the font — `sudo -u deploy fc-list` settles
+that faster than another recording does. Chromium reads the configuration as
+it starts, and btape starts one browser per run; a browser shared over `WsUrl`
+keeps the fonts it was launched with until it is restarted.
+
+Where one installed font covers a script, that is the whole job: the browser
+falls back to it even for a page that asked for `sans-serif`. Naming a family
+matters when several cover the same script — Noto CJK and IPA together, or a
+developer's macOS with Hiragino already on it. Either force it from the tape:
+
+```text
+Evaluate "document.head.insertAdjacentHTML('beforeend', '<style>*{font-family:IPAexGothic!important}</style>')"
+```
+
+which lasts as long as the document it ran in, so it is repeated after each
+`Goto` and inside a `Frame`; or prefer it for everything the machine renders,
+in `/etc/fonts/local.conf`:
+
+```xml
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <alias><family>sans-serif</family><prefer><family>IPAexGothic</family></prefer></alias>
+  <alias><family>serif</family><prefer><family>IPAexMincho</family></prefer></alias>
+  <alias><family>monospace</family><prefer><family>IPAGothic</family></prefer></alias>
+</fontconfig>
+```
+
+An alias only answers for the generic families. A page naming `Helvetica,
+Arial` ahead of `sans-serif` keeps whatever those resolve to — Liberation Sans,
+in an image that has it — so such a page is served by forcing the family from
+the tape, or by matching those names in the fontconfig file as well. macOS has
+no fontconfig at all, and there the tape is the only route.
+
+A tape can check that the font arrived rather than trust the image it runs in,
+since a family that is not installed measures the same as one that does not
+exist:
+
+```text
+WaitForJS "(() => { const c = document.createElement('canvas').getContext('2d'); const w = (f) => { c.font = '48px ' + f; return c.measureText('AあÄ0').width; }; return w('IPAexGothic') !== w('__missing__'); })()" 3s
+```
+
+Tape files themselves are read as UTF-8 whatever the locale says, so a `Type`
+line or a `text=` selector can be written in any script.
+
 ### A browser running somewhere else
 
 btape launches its own Chromium by default. Point it at one that is already
@@ -157,7 +223,8 @@ Btape::GifEncoder.new(delay: 150, width: 640).encode(frame_paths) # => String
 
 ## Container development with dip or wip
 
-The development image contains Ruby and Chromium.
+The development image contains Ruby, Chromium and Latin fonts; tapes that
+record other scripts need fonts for them added to it.
 
 ```sh
 dip provision

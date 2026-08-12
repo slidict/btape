@@ -34,6 +34,19 @@ RSpec.describe Btape::CLI do
     end
   end
 
+  def with_default_external(encoding)
+    previous = Encoding.default_external
+    # Assigning it warns, which says nothing a reader of this spec does not
+    # already know from the line above.
+    original_verbose = $VERBOSE
+    $VERBOSE = nil
+    Encoding.default_external = encoding
+    yield
+  ensure
+    Encoding.default_external = previous
+    $VERBOSE = original_verbose
+  end
+
   def with_env(env)
     previous = env.keys.to_h { |key| [key, ENV.fetch(key, nil)] }
     env.each { |key, value| ENV[key] = value }
@@ -47,6 +60,18 @@ RSpec.describe Btape::CLI do
       expect(status).to eq(0)
       expect(runner.base_directory).to eq(directory)
       expect(out).to include('Created')
+    end
+  end
+
+  # A tape is as likely to type Japanese or Greek as ASCII, and the locale of
+  # the machine recording it does not get a say in whether that parses.
+  it 'reads a tape as UTF-8 whatever the locale says' do
+    with_default_external(Encoding::US_ASCII) do
+      run_tape(tape: %(Output demo.gif\nType "#email" "ゆーざー@example.com"\n)) do |status:, err:, runner:, **|
+        expect(err).to eq('')
+        expect(status).to eq(0)
+        expect(runner.commands.last.arguments).to eq(['#email', 'ゆーざー@example.com'])
+      end
     end
   end
 
