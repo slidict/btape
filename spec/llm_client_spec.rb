@@ -5,6 +5,12 @@ require 'json'
 require 'socket'
 
 RSpec.describe Btape::LLM::Client do
+  # Anyone working on this feature has these exported, and half of what is
+  # below is about what the client does when nobody has said.
+  around do |example|
+    with_environment('BTAPE_LLM_URL' => nil, 'BTAPE_LLM_MODEL' => nil, 'BTAPE_LLM_KEY' => nil) { example.run }
+  end
+
   # A server rather than a stubbed Net::HTTP: what is being checked is that
   # btape speaks the protocol an LM Studio or an Ollama answers, and a stub
   # would only agree with whatever this file assumed about it.
@@ -120,6 +126,24 @@ RSpec.describe Btape::LLM::Client do
     with_server(body: JSON.generate(choices: [])) do |url|
       expect { described_class.new(base_url: url, model: 'm').complete([]) }
         .to raise_error(Btape::LLM::Error, /without a message/)
+    end
+  end
+
+  # Some servers answer with the content as a list of parts rather than as
+  # text, which is this client's to report rather than to trip over.
+  it 'reports a message that is not text' do
+    parts = JSON.generate(choices: [{ message: { content: [{ type: 'text', text: 'Output demo.gif' }] } }])
+
+    with_server(body: parts) do |url|
+      expect { described_class.new(base_url: url, model: 'm').complete([]) }
+        .to raise_error(Btape::LLM::Error, /without a message/)
+    end
+  end
+
+  it 'reports a model list in a shape it does not recognise' do
+    with_server(body: JSON.generate(data: ['qwen2.5-coder-7b'])) do |url|
+      expect { described_class.new(base_url: url).model }
+        .to raise_error(Btape::LLM::Error, /no model is loaded/)
     end
   end
 

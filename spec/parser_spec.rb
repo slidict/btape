@@ -72,14 +72,17 @@ RSpec.describe Btape::Parser do
     expect(described_class::SIGNATURES.keys).to match_array(described_class::ARITY.keys)
   end
 
-  # The optional arguments a signature shows in brackets are the ones the
-  # arity lets a script leave out.
-  it 'brackets exactly the arguments that are optional' do
+  # A signature names one argument per word, and brackets the ones the arity
+  # lets a script leave out — so counting both halves catches a signature
+  # that gained or lost an argument the parser does not agree about.
+  it 'names as many arguments as the arity allows, bracketing the optional ones' do
     described_class::SIGNATURES.each do |name, signature|
-      optional = signature.scan(/\[[^\]]+\]/).length
+      words = signature.split
       arity = described_class::ARITY.fetch(name)
+      allowed = arity.is_a?(Range) ? arity : (arity..arity)
 
-      expect(optional).to eq(arity.is_a?(Range) ? arity.max - arity.min : 0), "#{name} #{signature}"
+      expect(words.reject { |word| word.start_with?('[') }.length).to eq(allowed.min), "#{name} #{signature}"
+      expect(words.length).to eq(allowed.max), "#{name} #{signature}"
     end
   end
 end

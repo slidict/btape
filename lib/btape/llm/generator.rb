@@ -60,12 +60,18 @@ module Btape
       # of it; Output is checked here because it is the one requirement that
       # belongs to the script as a whole rather than to any line of it, and a
       # tape without it fails at the start of a recording instead.
+      #
+      # A second Output is worth another round too: the runner takes the first
+      # and says nothing about the rest, so a model that wrote two would
+      # otherwise be told it had got it right while half of what it wrote was
+      # quietly dropped.
       def fault(script)
         commands = Parser.new.parse(script)
         return 'it contained no commands' if commands.empty?
-        unless commands.any? { |command| command.name == 'Output' }
-          return 'it has no Output line, so there is nowhere for the GIF to go'
-        end
+
+        outputs = commands.count { |command| command.name == 'Output' }
+        return 'it has no Output line, so there is nowhere for the GIF to go' if outputs.zero?
+        return "it has #{outputs} Output lines, and a run writes one GIF" if outputs > 1
 
         nil
       rescue ScriptError => e

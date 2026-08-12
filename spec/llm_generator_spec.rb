@@ -58,6 +58,15 @@ RSpec.describe Btape::LLM::Generator do
     expect(fake.conversations.last.last[:content]).to include('Output')
   end
 
+  # The runner takes the first Output and ignores the rest, so a second one
+  # would be half a tape silently thrown away rather than a run that fails.
+  it 'sends a tape with two Outputs back rather than letting one be dropped' do
+    fake = client("Output one.gif\nOutput two.gif\nGoto http://localhost:3000\n", tape)
+
+    expect(described_class.new(client: fake).call('record the home page')).to eq(tape)
+    expect(fake.conversations.last.last[:content]).to include('2 Output lines')
+  end
+
   it 'gives up after the attempts it was allowed, saying what was still wrong' do
     broken = "Output demo.gif\nNavigate http://localhost:3000\n"
     fake = client(broken, broken)

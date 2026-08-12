@@ -52,7 +52,10 @@ module Btape
       return words.join(' ') unless words.empty?
       raise Error, USAGE if @stdin.tty?
 
-      @stdin.read.to_s
+      piped = @stdin.read.to_s
+      raise Error, USAGE if piped.strip.empty?
+
+      piped
     end
 
     def context(options)

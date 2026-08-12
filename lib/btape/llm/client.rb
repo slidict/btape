@@ -46,7 +46,11 @@ module Btape
         payload = { model: model, messages: messages, temperature: @temperature, stream: false }
         body = post('/chat/completions', payload)
         content = body.dig('choices', 0, 'message', 'content')
-        raise Error, "#{@base_url} answered without a message" if content.nil? || content.strip.empty?
+        # Not every server answers with a String there: some hand back the
+        # content as a list of parts, and a reasoning model may answer with
+        # nothing but its thoughts. Both are this client's error to report,
+        # rather than a NoMethodError from inside it.
+        raise Error, "#{@base_url} answered without a message" unless content.is_a?(String) && !content.strip.empty?
 
         content
       end
@@ -61,7 +65,8 @@ module Btape
       private
 
       def first_loaded_model
-        name = get('/models').fetch('data', nil)&.first&.fetch('id', nil)
+        entry = get('/models')['data']&.first
+        name = entry['id'] if entry.is_a?(Hash)
         raise Error, "no model is loaded at #{@base_url}; load one, or name it with --model" unless name
 
         name
@@ -86,13 +91,16 @@ module Btape
         request['authorization'] = "Bearer #{@api_key}" if @api_key
         response = transport(request.uri).request(request)
         parse(response)
-      rescue Errno::ECONNREFUSED, Errno::EHOSTUNREACH, SocketError => e
-        raise Error, "could not reach a model server at #{@base_url} (#{e.message}); is it running?"
       # A local server generating a long answer is the one most likely to be
       # killed part way through it, and the connection dropping is how that
       # arrives here.
-      rescue IOError, Errno::ECONNRESET, Net::HTTPBadResponse
+      rescue IOError, Errno::ECONNRESET, Errno::EPIPE, Net::HTTPBadResponse
         raise Error, "#{@base_url} closed the connection before answering; did the model run out of memory?"
+      # Everything else the network can say — refused, unreachable, no such
+      # host, a route that went away — is the same thing to whoever ran the
+      # command, and it is worth naming the address they can go and check.
+      rescue SocketError, SystemCallError => e
+        raise Error, "could not reach a model server at #{@base_url} (#{e.message}); is it running?"
       # Net::OpenTimeout and Net::ReadTimeout are both Timeout::Errors, so
       # this covers a server that accepted the connection and then thought
       # about it for too long as well as one that never accepted it.

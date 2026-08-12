@@ -47,7 +47,7 @@ module Btape
       # parser would accept back.
       VALUES = {
         duration: 'a duration',
-        url: 'a ws:// or http:// url',
+        url: "a #{Settings::URL_SCHEMES.join(', ')} url",
         count: 'a whole number, 0 or more',
         positive_integer: 'a whole number, 1 or more',
         positive_float: 'a number'

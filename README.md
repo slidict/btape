@@ -94,7 +94,8 @@ Usage: btape [options] SCRIPT.tape
   --frames-dir DIR Write the PNG frames here and keep them
   --verbose        Report each command on stderr as it runs
 
-  btape generate [options] DESCRIPTION   Write a tape by asking a local model
+Subcommands:
+  generate DESCRIPTION  Write a tape by asking a local model; btape generate --help
 ```
 
 `BTAPE_WS_URL` is used when neither `--ws-url` nor `--set WsUrl=` is given.
