@@ -44,7 +44,7 @@ module Btape
 
     def record(argument, options)
       script = File.expand_path(argument)
-      commands = Parser.new.parse(File.read(script))
+      commands = Parser.new.parse(read_script(script))
       result = runner(options).run(
         commands,
         base_directory: File.dirname(script),
@@ -53,6 +53,15 @@ module Btape
       )
       @out.puts "Created #{result.output_path}"
       report_frames(result)
+    end
+
+    # Tapes are UTF-8, not whatever the locale happens to be. A tape that
+    # types text or matches on it is as likely to be written in Japanese or
+    # Greek as in ASCII, and read through the default external encoding a
+    # machine with LANG unset would reject those bytes while parsing rather
+    # than while recording.
+    def read_script(path)
+      File.read(path, encoding: Encoding::UTF_8)
     end
 
     def runner(options)
