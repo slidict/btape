@@ -238,6 +238,29 @@ when told which line. What it cannot know is your markup, so a tape it wrote
 still names selectors that have to be checked against the page. Read it before
 you run it, the way you would read anything else generated for you.
 
+### A model that is not on this machine
+
+`--llm-url` is the whole of the configuration, so a hosted endpoint speaking
+the same API works as well as a local one. Name the model rather than leaving
+it to be discovered: these servers answer `/v1/models` with a catalogue rather
+than with the one thing they have loaded, and the first entry of it is not
+necessarily something that holds a conversation.
+
+```sh
+BTAPE_LLM_KEY=sk-... btape generate --llm-url https://api.openai.com/v1 --model gpt-4.1 "record signing in"
+```
+
+Anthropic serves an OpenAI-compatible layer on the same host as its own API,
+so `--llm-url https://api.anthropic.com/v1 --model claude-opus-5` records too.
+It is meant for trying models rather than for living on, but nothing btape
+asks of it is among the parts that are missing. A model that refuses
+`--temperature` at anything but its default wants `--temperature 1`.
+
+Sending the work somewhere else is the thing to weigh, not the flag. A local
+model keeps the description and the `--context` file on the machine that ran
+the command; a hosted one is handed both, and a context file is usually a page
+of your own markup rather than something you would have published.
+
 ## From Ruby
 
 `Runner#run` returns a `Btape::Result`:
