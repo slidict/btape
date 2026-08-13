@@ -68,12 +68,16 @@ at it. It runs in whatever frame is current, which is the page until a `Frame`
 says otherwise; navigating returns to the page too, since the frame belonged
 to the page that was left.
 
-`WaitFor` and `WaitForJS` poll instead of guessing at a `Sleep`. Both give up
-after `WaitTimeout` unless the line names a duration of its own, check every
-`WaitInterval`, and are satisfied only once `WaitStable` checks in a row have
-passed — a page that reports itself ready before it has settled is caught by
-raising that. An expression that raises counts as not-yet-true, and the last
-error it raised is reported if the wait times out.
+`WaitFor` and `WaitForJS` poll instead of guessing at a `Sleep`. Both check
+every `WaitInterval`, and are satisfied only once `WaitStable` checks in a row
+have passed; a check that fails puts the count back to zero, so a page that
+reports itself ready before it has settled is caught by raising `WaitStable`
+above 1. A duration on the line is how long that one wait gets, and
+`WaitTimeout` is how long the ones without get. Neither raises for a check
+that failed — only running out of time does, against the line that was
+waiting. An expression that raises counts as not-yet-true rather than as an
+error, but the last thing it raised is named in the timeout, so an expression
+that could never be true still says why.
 
 `Screenshot` captures a frame there and then. It is what `Set CaptureMode
 manual` records with — one frame per page of a deck, rather than a few hundred
