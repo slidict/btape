@@ -32,9 +32,27 @@ Screenshot [name]
 Sleep <number>ms|s
 ```
 
+| Command | What it does |
+| --- | --- |
+| `Output` | Where the GIF is written. Required, and read before the run wherever it appears |
+| `Viewport` | The size the page is rendered at, and so the size of the GIF before `Scale` |
+| `Set` | Configures the run rather than acting on the page; the names are in [Settings](#settings) |
+| `Goto` | Navigates the page, and puts the following commands back in the main frame |
+| `Click` | Clicks the first element the selector matches |
+| `Type` | Focuses the first element the selector matches and types the text into it |
+| `Press` | Presses a key by name — `Enter`, `Tab`, `Right` — once, or `count` times |
+| `Frame` | Points the following commands at an iframe; `Frame main` returns to the page |
+| `Evaluate` | Runs JavaScript in the current frame |
+| `WaitFor` | Polls until the selector matches something, then carries on |
+| `WaitForJS` | Polls until the JavaScript returns something truthy |
+| `Screenshot` | Captures one frame now, and with a name puts it at a predictable path too |
+| `Sleep` | Holds where it is for the duration, recording all the while |
+
 Arguments containing spaces must be quoted. Empty lines and lines beginning
 with `#` are ignored. `Output` is required; `Viewport` defaults to `1280x720`.
-Output paths are resolved relative to the tape file.
+Output paths are resolved relative to the tape file. Selectors are CSS, or
+`text=Some text` to match an element by the text it shows. Durations are a
+number followed by `ms` or `s` — `500ms`, `1.5s`.
 
 ```text
 Output demo.gif
@@ -45,14 +63,31 @@ Type "#email" "demo@example.com"
 Sleep 1s
 ```
 
-`Evaluate` runs JavaScript in the current frame, which is how a tape reaches
-an API the page exposes rather than clicking at it. `Frame` points the
-commands that follow at an iframe, and `Frame main` returns to the page;
-navigating returns to the page too, since the frame belonged to the page that
-was left. `WaitFor` and `WaitForJS` poll instead of guessing at a `Sleep`.
+`Evaluate` is how a tape reaches an API the page exposes rather than clicking
+at it. It runs in whatever frame is current, which is the page until a `Frame`
+says otherwise; navigating returns to the page too, since the frame belonged
+to the page that was left.
 
-`Screenshot` captures a frame there and then. With a name it also lands at a
-predictable path, for picking one particular frame out of a run.
+`WaitFor` and `WaitForJS` poll instead of guessing at a `Sleep`. Both check
+every `WaitInterval`, and are satisfied only once `WaitStable` checks in a row
+have passed; a check that fails puts the count back to zero, so a page that
+reports itself ready before it has settled is caught by raising `WaitStable`
+above 1. A duration on the line is how long that one wait gets, and
+`WaitTimeout` is how long the ones without get. Neither raises for a check
+that failed — only running out of time does, against the line that was
+waiting. An expression that raises counts as not-yet-true rather than as an
+error, but the last thing it raised is named in the timeout, so an expression
+that could never be true still says why.
+
+`Screenshot` captures a frame there and then. It is what `Set CaptureMode
+manual` records with — one frame per page of a deck, rather than a few hundred
+near-identical ones — and a name makes that one frame findable afterwards, as
+`frame-NAME.png` under `--frames-dir` and as `result.named_frames['NAME']`
+from Ruby.
+
+`Sleep` is for holding a finished frame on screen long enough to be seen,
+which is a different job from waiting for the page: interval recording carries
+on throughout one, so a `Sleep` is what gives a GIF its pauses.
 
 ## Settings
 
