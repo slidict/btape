@@ -40,3 +40,70 @@ jobs:
       - name: Smoke test CLI
         run: |
           bundle exec exe/btape help | grep -q '^Commands:'
+
+  browser:
+    name: Browser end-to-end
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@9eb537ca036ebaed86729dcb9309076e4c5c3b74 # v1.314.0
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Find a browser
+        run: |
+          for candidate in chromium chromium-browser google-chrome google-chrome-stable; do
+            path=$(command -v "$candidate" || true)
+            if [ -n "$path" ]; then
+              "$path" --version
+              echo "BROWSER_PATH=$path" >> "$GITHUB_ENV"
+              exit 0
+            fi
+          done
+          echo "No Chromium or Chrome on this runner; btape has nothing to drive." >&2
+          exit 1
+
+      - name: Record examples/demo.tape
+        env:
+          # Ferrum reads this to pass --no-sandbox, which the runner's Chromium
+          # needs; the tape and everything else is exactly what a user runs.
+          FERRUM_CHROME_DOCKERIZE: "true"
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/e2e"
+          # The tape navigates to the path the development container mounts the
+          # checkout on. Here the checkout is somewhere else, so point that one
+          # line at it; the recording is otherwise the tape as committed.
+          sed "s|file:///app/examples/|file://$GITHUB_WORKSPACE/examples/|" \
+            examples/demo.tape > "$RUNNER_TEMP/e2e/demo.tape"
+          bundle exec exe/btape --verbose --frames-dir "$RUNNER_TEMP/e2e/frames" "$RUNNER_TEMP/e2e/demo.tape"
+
+      - name: Check the GIF that came out
+        run: |
+          set -euo pipefail
+          frames=$(find "$RUNNER_TEMP/e2e/frames" -name 'frame-*.png' | wc -l)
+          if [ "$frames" -lt 2 ]; then
+            echo "expected the browser to be screenshotted more than once, got $frames frame(s)" >&2
+            exit 1
+          fi
+          ruby - "$RUNNER_TEMP/e2e/demo.gif" <<'RUBY'
+          path = ARGV.fetch(0)
+          abort "#{path} was not written" unless File.exist?(path)
+
+          data = File.binread(path)
+          abort "#{path} is not a GIF: #{data[0, 6].inspect}" unless data.start_with?('GIF89a')
+
+          width, height = data[6, 4].unpack('v2')
+          abort "#{path} has no size: #{width}x#{height}" unless width.positive? && height.positive?
+          abort "#{path} is too small to hold a recording: #{data.bytesize} bytes" if data.bytesize < 1024
+
+          puts "#{path}: #{width}x#{height}, #{data.bytesize} bytes"
+          RUBY
+          echo "recorded $frames frames"
