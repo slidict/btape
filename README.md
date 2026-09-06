@@ -4,15 +4,104 @@
   <img src="assets/logo.png" alt="btape logo" width="480">
 </p>
 
-`btape` is a small, VHS-inspired Ruby CLI that runs browser actions from a
-`.tape` file and records them as an animated GIF. Ferrum controls Chromium
-and captures PNG frames, and a pure-Ruby encoder produces the GIF. It
-does not require Playwright, Selenium, ffmpeg, or an external service.
+<p align="center">
+  <img src="assets/demo.gif" alt="btape recording a login flow into an animated GIF" width="720">
+</p>
+
+<p align="center">
+  <sub>Run a <code>.tape</code> file, get that GIF. This one is <code>examples/demo.tape</code>.</sub>
+</p>
+
+## What is btape
+
+A `.tape` file lists the browser actions you would otherwise click through by
+hand. `btape` performs them against a real browser and records what the page
+did as an animated GIF:
+
+```text
+Output demo.gif
+Viewport 1280x720
+
+Goto https://example.com
+Click "text=Login"
+Type "#email" "demo@example.com"
+Sleep 2s
+```
+
+It is a small, VHS-inspired Ruby CLI. Ferrum controls Chromium and captures
+PNG frames, and a pure-Ruby encoder produces the GIF. It does not require
+Playwright, Selenium, ffmpeg, or an external service.
 
 Tapes are written by hand, or asked of a language model running on the same
 machine: `btape generate` describes the language to LM Studio, Ollama or
 anything else speaking their API, and holds the answer to the parser before
 handing it over.
+
+## Demo
+
+The GIF above was recorded by btape itself, from `examples/demo.tape` driving
+`examples/demo_app.html` — a static page bundled with the repository, so the
+demo needs no other service running:
+
+```text
+Output demo.gif
+Viewport 1280x720
+
+Goto file:///app/examples/demo_app.html
+Sleep 500ms
+
+Click "text=Login"
+Sleep 300ms
+Type "#email" "demo@example.com"
+Type "#password" "password"
+Click "text=Sign in"
+Sleep 2s
+```
+
+`file:///app/…` is where the development container mounts the checkout, so
+`dip demo` records it as it stands. Outside the container, point `Goto` at
+your own copy of that file — or at any URL at all, which is the point.
+
+## Install
+
+```sh
+gem install btape
+```
+
+or, in a Gemfile:
+
+```ruby
+gem 'btape'
+```
+
+Chromium — or Chrome — must be installed and discoverable by Ferrum:
+`brew install --cask chromium` on macOS, `apt-get install chromium` on Debian
+or Ubuntu. A browser installed somewhere unusual is named by `BROWSER_PATH`,
+and one running on another machine by `--ws-url`; see
+[A browser running somewhere else](#a-browser-running-somewhere-else).
+
+## Quick start
+
+Write `demo.tape`:
+
+```text
+Output demo.gif
+Viewport 1280x720
+
+Goto https://example.com
+Sleep 1s
+```
+
+and run it:
+
+```sh
+btape demo.tape
+# Created /path/to/demo.gif
+```
+
+`Output` is where the GIF goes, resolved relative to the tape file. Point
+`Goto` at your own application and add `Click`, `Type` and `WaitFor` lines
+until the recording shows what you want it to. The whole language is below.
 
 ## Commands
 
@@ -53,15 +142,6 @@ with `#` are ignored. `Output` is required; `Viewport` defaults to `1280x720`.
 Output paths are resolved relative to the tape file. Selectors are CSS, or
 `text=Some text` to match an element by the text it shows. Durations are a
 number followed by `ms` or `s` — `500ms`, `1.5s`.
-
-```text
-Output demo.gif
-Viewport 1280x720
-Goto http://localhost:3000
-Click "text=Login"
-Type "#email" "demo@example.com"
-Sleep 1s
-```
 
 `Evaluate` is how a tape reaches an API the page exposes rather than clicking
 at it. It runs in whatever frame is current, which is the page until a `Frame`
@@ -111,15 +191,7 @@ can run in more than one place.
 | `WaitStable` | `1` | How many checks in a row must pass before a wait is satisfied |
 | `MaxFrames` | `600` | Stop rather than record a hung page until the disk fills |
 
-## Install and run
-
-Chromium must be installed and discoverable by Ferrum. Then:
-
-```sh
-bundle install
-bundle exec btape demo.tape
-bundle exec rake spec
-```
+## Command line
 
 ```text
 Usage: btape [options] SCRIPT.tape
@@ -134,6 +206,35 @@ Subcommands:
 ```
 
 `BTAPE_WS_URL` is used when neither `--ws-url` nor `--set WsUrl=` is given.
+
+## Advanced usage
+
+### A browser running somewhere else
+
+btape launches its own Chromium by default. Point it at one that is already
+running — a `browserless`/`chrome` container, say — and no browser needs to be
+in the image btape runs from:
+
+```sh
+btape --ws-url ws://chrome:3000 examples/thumbnails.tape
+```
+
+Each connection gets its own browser context, so concurrent runs against one
+shared browser do not see each other. The viewport is applied over the wire,
+since a browser that is already running cannot be told its window size at
+launch.
+
+`examples/thumbnails.tape` is the other shape of run: one frame per page of a
+deck, captured with `Set CaptureMode manual` against a remote browser.
+
+### Frames, not just the GIF
+
+Frames are normally written to a temporary directory and removed as the run
+unwinds. `--frames-dir` keeps them:
+
+```sh
+btape --frames-dir frames examples/thumbnails.tape
+```
 
 ### Fonts, and text that is not Latin
 
@@ -201,31 +302,7 @@ WaitForJS "(() => { const c = document.createElement('canvas').getContext('2d');
 Tape files themselves are read as UTF-8 whatever the locale says, so a `Type`
 line or a `text=` selector can be written in any script.
 
-### A browser running somewhere else
-
-btape launches its own Chromium by default. Point it at one that is already
-running — a `browserless`/`chrome` container, say — and no browser needs to be
-in the image btape runs from:
-
-```sh
-btape --ws-url ws://chrome:3000 examples/thumbnails.tape
-```
-
-Each connection gets its own browser context, so concurrent runs against one
-shared browser do not see each other. The viewport is applied over the wire,
-since a browser that is already running cannot be told its window size at
-launch.
-
-### Frames, not just the GIF
-
-Frames are normally written to a temporary directory and removed as the run
-unwinds. `--frames-dir` keeps them:
-
-```sh
-btape --frames-dir frames examples/thumbnails.tape
-```
-
-## Writing a tape with a local model
+### Writing a tape with a local model
 
 `btape generate` describes the language to a model running on your own
 machine and asks it for a tape:
@@ -273,7 +350,7 @@ when told which line. What it cannot know is your markup, so a tape it wrote
 still names selectors that have to be checked against the page. Read it before
 you run it, the way you would read anything else generated for you.
 
-### A model that is not on this machine
+#### A model that is not on this machine
 
 `--llm-url` is the whole of the configuration, so a hosted endpoint speaking
 the same API works as well as a local one. Name the model rather than leaving
@@ -296,7 +373,7 @@ model keeps the description and the `--context` file on the machine that ran
 the command; a hosted one is handed both, and a context file is usually a page
 of your own markup rather than something you would have published.
 
-## From Ruby
+### From Ruby
 
 `Runner#run` returns a `Btape::Result`:
 
@@ -345,10 +422,19 @@ tape = generator.call('record the dashboard loading', context: page_markup)
 Btape::Runner.new.run(Btape::Parser.new.parse(tape), base_directory: '.', output: buffer)
 ```
 
-## Container development with dip or wip
+## Development
 
-The development image contains Ruby, Chromium and Latin fonts; tapes that
-record other scripts need fonts for them added to it.
+Working on btape itself, rather than using it, starts from a checkout:
+
+```sh
+bundle install
+bundle exec rake spec
+bundle exec rake rubocop
+bundle exec exe/btape examples/demo.tape
+```
+
+Or from the development image, which contains Ruby, Chromium and Latin fonts;
+tapes that record other scripts need fonts for them added to it:
 
 ```sh
 dip provision
@@ -360,11 +446,9 @@ wip dispatch demo
 wip dispatch btape examples/demo.tape
 ```
 
-`examples/demo.tape` drives a small static page bundled at
-`examples/demo_app.html`, so the demo is self-contained and needs no other
-service running. Edit the tape (or point `Goto` at a different URL) to record
-something else. `examples/thumbnails.tape` shows the other shape of run: one
-frame per page of a deck, against a browser running elsewhere.
+CI runs the specs and RuboCop across Ruby 3.2 to 4.0, and records
+`examples/demo.tape` against a real Chromium to check that a GIF still comes
+out the other end. [CONTRIBUTING.md](CONTRIBUTING.md) has the rest.
 
 ## Limitations
 
@@ -391,3 +475,8 @@ This project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 ## License
 
 [MIT](LICENSE)
+
+## Repository topics
+
+Suggested GitHub topics for this repository: `browser-automation`, `chromium`,
+`cli`, `ruby`, `developer-tools`, `screen-recording`, `gif`, `ferrum`, `vhs`.
