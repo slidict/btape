@@ -1,0 +1,74 @@
+name: Post to X
+
+on:
+  workflow_call:
+    inputs:
+      message:
+        description: Text to post to X.
+        required: true
+        type: string
+    secrets:
+      X_CONSUMER_API_KEY:
+        required: true
+      X_CONSUMER_API_SECRET:
+        required: true
+      X_ACCESS_TOKEN:
+        required: true
+      X_ACCESS_TOKEN_SECRET:
+        required: true
+
+jobs:
+  tweet:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Post to X
+        continue-on-error: true
+        env:
+          MESSAGE: ${{ inputs.message }}
+          X_CONSUMER_API_KEY: ${{ secrets.X_CONSUMER_API_KEY }}
+          X_CONSUMER_API_SECRET: ${{ secrets.X_CONSUMER_API_SECRET }}
+          X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+        run: |
+          ruby <<'RUBY'
+          require "base64"
+          require "json"
+          require "net/http"
+          require "openssl"
+          require "securerandom"
+          require "uri"
+
+          uri = URI("https://api.x.com/2/tweets")
+          escape = ->(value) { URI.encode_www_form_component(value).gsub("+", "%20").gsub("%7E", "~") }
+          oauth = {
+            "oauth_consumer_key" => ENV.fetch("X_CONSUMER_API_KEY"),
+            "oauth_nonce" => SecureRandom.hex(16),
+            "oauth_signature_method" => "HMAC-SHA1",
+            "oauth_timestamp" => Time.now.to_i.to_s,
+            "oauth_token" => ENV.fetch("X_ACCESS_TOKEN"),
+            "oauth_version" => "1.0"
+          }
+
+          parameters = oauth.sort.map { |key, value| "#{escape.call(key)}=#{escape.call(value)}" }.join("&")
+          signature_base = ["POST", escape.call(uri.to_s), escape.call(parameters)].join("&")
+          signing_key = [ENV.fetch("X_CONSUMER_API_SECRET"), ENV.fetch("X_ACCESS_TOKEN_SECRET")]
+            .map { |secret| escape.call(secret) }
+            .join("&")
+          oauth["oauth_signature"] = Base64.strict_encode64(
+            OpenSSL::HMAC.digest("SHA1", signing_key, signature_base)
+          )
+
+          authorization = "OAuth " + oauth.sort.map do |key, value|
+            %(#{escape.call(key)}="#{escape.call(value)}")
+          end.join(", ")
+
+          request = Net::HTTP::Post.new(uri)
+          request["Authorization"] = authorization
+          request["Content-Type"] = "application/json"
+          request.body = JSON.generate(text: ENV.fetch("MESSAGE"))
+          response = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(request) }
+
+          abort "X API returned #{response.code}: #{response.body}" unless response.is_a?(Net::HTTPSuccess)
+          puts response.body
+          RUBY

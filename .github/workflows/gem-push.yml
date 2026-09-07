@@ -16,6 +16,9 @@ jobs:
     name: Build + Publish
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main'
+    outputs:
+      released: ${{ steps.existing.outputs.rubygems_exists == 'false' }}
+      version: ${{ steps.version.outputs.version }}
     permissions:
       contents: write
       packages: write
@@ -140,14 +143,15 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Post release to X
-        if: steps.existing.outputs.rubygems_exists == 'false'
-        continue-on-error: true
-        uses: Eomm/why-don-t-you-tweet@v2
-        with:
-          tweet-message: "btape ${{ steps.version.outputs.tag }} has been released! https://rubygems.org/gems/btape/versions/${{ steps.version.outputs.version }}"
-        env:
-          TWITTER_CONSUMER_API_KEY: ${{ secrets.X_CONSUMER_API_KEY }}
-          TWITTER_CONSUMER_API_SECRET: ${{ secrets.X_CONSUMER_API_SECRET }}
-          TWITTER_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
+  tweet:
+    name: Announce release
+    needs: build
+    if: needs.build.outputs.released == 'true'
+    uses: ./.github/workflows/tweet.yml
+    with:
+      message: "btape v${{ needs.build.outputs.version }} has been released! https://rubygems.org/gems/btape/versions/${{ needs.build.outputs.version }}"
+    secrets:
+      X_CONSUMER_API_KEY: ${{ secrets.X_CONSUMER_API_KEY }}
+      X_CONSUMER_API_SECRET: ${{ secrets.X_CONSUMER_API_SECRET }}
+      X_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+      X_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
