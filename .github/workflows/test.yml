@@ -40,3 +40,120 @@ jobs:
       - name: Smoke test CLI
         run: |
           bundle exec exe/btape help | grep -q '^Commands:'
+
+  browser:
+    name: Browser end-to-end
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@9eb537ca036ebaed86729dcb9309076e4c5c3b74 # v1.314.0
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Find a browser
+        run: |
+          # Chrome first: the runner's `chromium` is a wrapper around a
+          # sandboxed package that answers --version but takes longer than
+          # Ferrum waits to hand back a DevTools URL.
+          for candidate in google-chrome google-chrome-stable chromium chromium-browser; do
+            path=$(command -v "$candidate" || true)
+            [ -n "$path" ] || continue
+            # Rendering a page is the thing btape needs and --version does not
+            # prove, so ask for that before settling on this candidate. It also
+            # leaves the browser warm for the run below.
+            if timeout 60 "$path" --headless --no-sandbox --disable-gpu \
+              --user-data-dir="$RUNNER_TEMP/browser-probe" \
+              --dump-dom about:blank >/dev/null 2>&1; then
+              "$path" --version
+              echo "BROWSER_PATH=$path" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            echo "$path is installed but could not render a page headless; trying the next one."
+          done
+          echo "No browser on this runner could render a page; btape has nothing to drive." >&2
+          exit 1
+
+      - name: Record examples/demo.tape
+        env:
+          # Ferrum reads this to pass --no-sandbox, which the runner's browser
+          # needs; the tape and everything else is exactly what a user runs.
+          FERRUM_CHROME_DOCKERIZE: "true"
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/e2e"
+          # The tape navigates to the path the development container mounts the
+          # checkout on. Here the checkout is somewhere else, so point that one
+          # line at it; the recording is otherwise the tape as committed.
+          sed "s|file:///app/examples/|file://$GITHUB_WORKSPACE/examples/|" \
+            examples/demo.tape > "$RUNNER_TEMP/e2e/demo.tape"
+          bundle exec exe/btape --verbose --frames-dir "$RUNNER_TEMP/e2e/frames" "$RUNNER_TEMP/e2e/demo.tape"
+
+      - name: Check the GIF that came out
+        run: |
+          set -euo pipefail
+          frames=$(find "$RUNNER_TEMP/e2e/frames" -name 'frame-*.png' | wc -l)
+          if [ "$frames" -lt 2 ]; then
+            echo "expected the browser to be screenshotted more than once, got $frames frame(s)" >&2
+            exit 1
+          fi
+          ruby - "$RUNNER_TEMP/e2e/demo.gif" <<'RUBY'
+          # A colour table is 3 bytes per entry, and the packed byte carries
+          # its size as the exponent of the entry count.
+          def colour_table_size(packed)
+            packed.nobits?(0x80) ? 0 : 3 * (2 << (packed & 0x07))
+          end
+
+          # Every payload in a GIF is a chain of sub-blocks, each one a length
+          # byte and that many bytes, ending at a zero length.
+          def skip_sub_blocks(data, offset, path)
+            loop do
+              size = data.getbyte(offset) or abort "#{path} ends inside a block"
+              offset += 1
+              return offset if size.zero?
+
+              offset += size
+            end
+          end
+
+          path = ARGV.fetch(0)
+          abort "#{path} was not written" unless File.exist?(path)
+
+          data = File.binread(path)
+          abort "#{path} is not a GIF: #{data[0, 6].inspect}" unless data.start_with?('GIF89a')
+
+          width, height = data[6, 4].unpack('v2')
+          abort "#{path} has no size: #{width}x#{height}" unless width.positive? && height.positive?
+          abort "#{path} is too small to hold a recording: #{data.bytesize} bytes" if data.bytesize < 1024
+
+          # The encoder holds a repeated screenshot as one longer frame, so a
+          # run that captured plenty of screenshots can still encode to a
+          # still image. Count the GIF's own image blocks: that is what a
+          # viewer animates.
+          offset = 13 + colour_table_size(data.getbyte(10))
+          frames_in_gif = 0
+
+          loop do
+            block = data.getbyte(offset) or abort "#{path} ends before its trailer"
+            offset += 1
+            case block
+            when 0x3B then break
+            when 0x21 then offset = skip_sub_blocks(data, offset + 1, path)
+            when 0x2C
+              frames_in_gif += 1
+              offset = skip_sub_blocks(data, offset + colour_table_size(data.getbyte(offset + 8)) + 10, path)
+            else abort format("#{path} has a block no decoder expects here: 0x%02x", block)
+            end
+          end
+
+          abort "#{path} does not animate: #{frames_in_gif} frame(s) in the GIF" if frames_in_gif < 2
+
+          puts "#{path}: #{width}x#{height}, #{frames_in_gif} frames, #{data.bytesize} bytes"
+          RUBY
+          echo "screenshotted the browser $frames times"

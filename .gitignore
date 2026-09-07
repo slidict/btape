@@ -4,3 +4,6 @@
 /*.gem
 *.gif
 /Gemfile.lock
+
+# The demo GIF in the README is committed, not built at clone time.
+!/assets/*.gif
