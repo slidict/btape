@@ -129,17 +129,6 @@ jobs:
           gem build *.gemspec
           gem push *.gem
 
-      - name: Post release to X
-        if: steps.existing.outputs.rubygems_exists == 'false'
-        uses: Eomm/why-don-t-you-tweet@v2
-        with:
-          tweet-message: "btape ${{ steps.version.outputs.tag }} has been released! https://rubygems.org/gems/btape/versions/${{ steps.version.outputs.version }}"
-        env:
-          TWITTER_CONSUMER_API_KEY: ${{ secrets.X_CONSUMER_API_KEY }}
-          TWITTER_CONSUMER_API_SECRET: ${{ secrets.X_CONSUMER_API_SECRET }}
-          TWITTER_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
-          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}
-
       - name: Publish release notes
         if: steps.release.outputs.exists == 'false'
         uses: release-drafter/release-drafter@v7
@@ -150,3 +139,15 @@ jobs:
           name: ${{ steps.version.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Post release to X
+        if: steps.existing.outputs.rubygems_exists == 'false'
+        continue-on-error: true
+        uses: Eomm/why-don-t-you-tweet@v2
+        with:
+          tweet-message: "btape ${{ steps.version.outputs.tag }} has been released! https://rubygems.org/gems/btape/versions/${{ steps.version.outputs.version }}"
+        env:
+          TWITTER_CONSUMER_API_KEY: ${{ secrets.X_CONSUMER_API_KEY }}
+          TWITTER_CONSUMER_API_SECRET: ${{ secrets.X_CONSUMER_API_SECRET }}
+          TWITTER_ACCESS_TOKEN: ${{ secrets.X_ACCESS_TOKEN }}
+          TWITTER_ACCESS_TOKEN_SECRET: ${{ secrets.X_ACCESS_TOKEN_SECRET }}

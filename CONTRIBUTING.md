@@ -59,6 +59,8 @@ style prefixes in the title are welcome but not required as long as the
 label is set correctly.
 
 The release workflow posts the new version to X after RubyGems accepts it.
+This announcement is best-effort, so an X outage does not fail an otherwise
+successful release.
 Repository maintainers must configure `X_CONSUMER_API_KEY`,
 `X_CONSUMER_API_SECRET`, `X_ACCESS_TOKEN`, and `X_ACCESS_TOKEN_SECRET` as
 GitHub Actions repository secrets. The corresponding X app and access token
